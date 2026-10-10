@@ -2,7 +2,7 @@
  * The editor shell. The interface entry (src/interface.ts) needs only this:
  *
  *   import { defineInterface } from '@directus/extensions-sdk';
- *   import { nodeGraphOptions } from './shared/options';
+ *   import NodeGraphOptions from './shared/options-editor/NodeGraphOptions.vue';
  *   import { createNodeGraphInterface } from './shared/ui';
  *   import VueFlowCanvas from './canvas/VueFlowCanvas.vue';
  *
@@ -12,7 +12,7 @@
  *   	icon: 'account_tree',
  *   	types: ['json'],
  *   	group: 'other',
- *   	options: nodeGraphOptions,
+ *   	options: NodeGraphOptions,
  *   	recommendedDisplays: ['node-graph-summary'],
  *   	component: createNodeGraphInterface({
  *   		interfaceId: 'node-graph',
@@ -30,7 +30,7 @@ import NodeGraphInterface from './NodeGraphInterface.vue';
 
 export { default as NodeGraphInterface } from './NodeGraphInterface.vue';
 export { PALETTE_DRAG_MIME } from './canvas-contract';
-export type { CanvasEmits, CanvasExpose, CanvasProps, CanvasRegistration, Selection } from './canvas-contract';
+export type { CanvasEmits, CanvasExpose, CanvasProps, CanvasRegistration, ReferenceLabels, Selection } from './canvas-contract';
 
 /**
  * The interface component for `defineInterface({ component })`: the shared

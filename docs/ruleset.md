@@ -2,14 +2,15 @@
 
 A ruleset says what a node-graph field may contain: which node types exist, what fields and ports they have, which connections are allowed, and which problems are errors or warnings. The editor, the field row, the summary display and the server-side hook all use the same ruleset and the same checks, so they always agree.
 
-This page describes the format for people who write rulesets by hand. Two complete rulesets are in the repository:
+This page describes the format, for people who write rulesets by hand and for anyone who wants to know what the ruleset editor in the field settings writes: [the options form](#the-options-form) and its JSON editor edit the same document. Two complete rulesets are in the repository, and both are offered by **Load Example**:
 
-- [`examples/approval-workflow.json`](../examples/approval-workflow.json): the "Approval workflow" ruleset, the same one the code editor's template button inserts. It uses every feature at least once.
+- [`examples/approval-workflow.json`](../examples/approval-workflow.json): the "Approval workflow" ruleset. It uses every feature at least once.
 - [`examples/simple-approval.json`](../examples/simple-approval.json): a smaller ruleset with four node types and one edge type, a good starting point.
 
 ## Contents
 
 1. [Where the ruleset lives](#where-the-ruleset-lives)
+   - [The options form](#the-options-form)
 2. [How a ruleset is checked](#how-a-ruleset-is-checked)
 3. [Top level](#top-level)
 4. [Data types](#data-types)
@@ -24,6 +25,7 @@ This page describes the format for people who write rulesets by hand. Two comple
 13. [Severity overrides](#severity-overrides)
 14. [Starter graph](#starter-graph)
 15. [Templates](#templates)
+   - [Item references](#item-references)
 16. [Issue codes](#issue-codes)
 17. [The stored graph document](#the-stored-graph-document)
 18. [Server-side enforcement](#server-side-enforcement)
@@ -31,7 +33,7 @@ This page describes the format for people who write rulesets by hand. Two comple
 
 ## Where the ruleset lives
 
-The ruleset is the **Ruleset** option of a Node Graph field (Settings, Data Model, the field, Interface). Directus stores it in `directus_fields.options.ruleset`, so it travels with schema snapshots. The option uses the stock code editor in JSON mode, which stores the parsed object; a ruleset written through the API may also be a JSON string, and both forms are accepted. The code editor's template button fills in the "Approval workflow" example.
+The ruleset is the **Ruleset** option of a Node Graph field (Settings, Data Model, the field, Interface). Directus stores it in `directus_fields.options.ruleset`, so it travels with schema snapshots. It is one JSON object in the format below. The field settings edit it with [the options form](#the-options-form), which stores the object; a ruleset written through the API may also be a JSON string, and both forms are accepted.
 
 The field's other options are resolved with defaults whenever they are read, because Directus does not save an option the admin never touched:
 
@@ -45,6 +47,39 @@ The field's other options are resolved with defaults whenever they are read, bec
 | Snap to Grid | `snapToGrid` | `true` | |
 | Grid Size | `gridSize` | `18` | Canvas units; rounded and clamped to 4-96. |
 | Minimap | `showMinimap` | `false` | |
+
+### The options form
+
+The interface options show the plain options above, then the ruleset as a form of stock Directus inputs: collapsible sections, Repeaters (the `list` interface) for lists, and the same interface and display pickers as the stock Repeater's "Edit Fields". **Edit as JSON** opens the whole ruleset in the code editor instead, and **Load Example** replaces it with one of the examples (asking first). Both edit the same stored document; the form is only another view of it.
+
+| Form | Ruleset keys |
+|---|---|
+| Ruleset section | `key`, `name`, `version`, `direction` |
+| Data Types section, one row per type | `dataTypes[]`: `key`, `label`, `color`, `accepts` |
+| Node Types section, one drawer per type | `nodeTypes[]`: `key`, `label`, `icon`, `color`, `category`, `description` |
+| … Behaviour | `deprecated`, `deletable`, `limits.minInstances`, `limits.maxInstances` |
+| … Card | `titleTemplate`, `summaryFields` |
+| … Fields, one drawer per field | `fields[]`: `field`, `name`, `type`, `meta.width`, `meta.required`, `meta.readonly`, `meta.hidden`, `meta.note`, `schema.default_value` (Default Value), `meta.interface` and `meta.options` (Interface Options), `meta.display` and `meta.display_options` (Display Options) |
+| … Ports: Inputs and Outputs | `inputs[]`, `outputs[]`: `key`, `label`, `dataType`, `side`, `minConnections`, `maxConnections`, and for outputs `edgeTypes` (Edge Types, and New Connections for its first entry) |
+| … Dynamic Outputs | `dynamicOutputs`: `field` (Source Field), `labelTemplate`, `placement`, and `port` (the port settings) |
+| Edge Types section, one drawer per type | `edgeTypes[]`: `key`, `label`, `style.path`, `style.marker`, `style.color`, `style.dashed`, `style.animated`, `labelTemplate`, `fields` (as for node types) |
+| Connection Rules section | `connectionRules`: `defaultEdgeType`, `typeCheck`, `allowSelfLoops`, `allowCycles`, `allowMultiEdges`, `pairs.mode` (Pair Rules), `pairs.rules[]` (Rules: `source`, `sourcePort`, `target`, `targetPort`, `message`) |
+| Graph Rules section | `graphRules`: `minNodes`, `maxNodes`, `maxEdges`, `entryNodeTypes`, `requireReachableFromEntry`, `requireConnected` |
+| Severity Overrides section, one row per code | `severity`: `{ "<code>": "<severity>" }` |
+| Starter Graph section | `starter.nodes[]` (`ref`, `type`, `position.x`, `position.y`, `data`) and `starter.edges[]` (`source`, `sourceHandle`, `target`, `targetHandle`, `type`, `data`) |
+
+`format` and `schemaVersion` are not shown; they are kept as they are, and the examples include them.
+
+What the form writes:
+
+- **Only what you change.** Every list row keeps the stored object it came from, and a change rebuilds the object from it, so keys the form does not show (`meta.conditions`, `meta.sort`, keys for a later version, notes) stay, and so do the order of lists and of keys. Keys that are new to an object go where this page lists them.
+- **No defaults.** A value equal to its documented default (`deletable: true`, `typeCheck: "strict"`, `width: "full"`, …) is written only if the key was already there; the form shows the default for an absent key. An emptied value (an empty text, a cleared number, an empty list) removes the key.
+- **Incomplete rows stay.** A node type without a key yet, or a field without a type, is stored as it is, and the problems list says what is missing. Only a severity override without an issue code cannot be stored (there is no key to store it under); the form keeps it and lists it under "Not saved as entered".
+- **References are not renamed.** Changing a key does not change the pair rules, entry node types, port edge types or starter graph that refer to it. Selects list such values as "(not defined)", and the problems list reports them.
+- **Default values are typed as text** and stored by the field's type: `true` or `false` for `boolean`; a number for `integer` (whole numbers only) and `float`; JSON for `json` (`{"a": 1}`, `["a"]`, `3`, `"text"`); a JSON list or comma-separated values for `csv`, stored as a list of text; and the text as it is for every other type (`bigInteger` and `decimal` stay text, as in the Directus app). Text that does not fit the type is stored as text and listed under "Not saved as entered". An unchanged default is kept exactly as stored, whatever its type.
+- **Nothing on open.** Opening the field settings writes nothing; only an edit does.
+
+A ruleset the form cannot show without changing it (a list that is not a list, a flag that is not `true` or `false`, a version that is text, a key such as `__proto__`), or text that is not JSON, opens in the JSON editor in place of the sections, with the reasons and the problems. Nothing is changed until you apply a fix. A ruleset stored as JSON text opens in the form and is stored as an object at the first change.
 
 ## How a ruleset is checked
 
@@ -213,18 +248,18 @@ Node types and edge types declare their fields in the Directus field shape, and 
 | `field` | key | required | Unique within the type. Not `_user` or `_date`. |
 | `name` | text | the key in title case | The form label, and the label in messages and card summaries. |
 | `type` | text | required | One of `string`, `text`, `integer`, `bigInteger`, `float`, `decimal`, `boolean`, `json`, `csv`, `uuid`, `hash`, `date`, `time`, `dateTime`, `timestamp`, or `alias` for presentation-only fields that hold no data (a notice or a divider). |
-| `meta.interface` | interface id | the form's default for the type | Any interface that works without a collection. Interfaces that need a relation or a collection-backed group are refused: `file`, `file-image`, `files`, `list-m2a`, `list-m2m`, `list-o2m`, `list-o2m-tree-view`, `select-dropdown-m2o`, `translations`, `group-accordion`, `group-detail`, `group-raw` and `group-tabs`. |
+| `meta.interface` | interface id | the form's default for the type | Any interface that works without a collection. Interfaces that need a relation or a collection-backed group are refused: `file`, `file-image`, `files`, `list-m2a`, `list-m2m`, `list-o2m`, `list-o2m-tree-view`, `select-dropdown-m2o`, `translations`, `group-accordion`, `group-detail`, `group-raw` and `group-tabs`. To point at items of another collection, use `collection-item-dropdown` or `collection-item-multiple-dropdown` (see [Item references](#item-references)). |
 | `meta.options` | object | | The interface's options, for example `choices` for selects or `fields` for a `list` repeater. |
 | `meta.width` | `half`, `half-left`, `half-right`, `full`, `fill` | `full` | Width in the inspector form. |
 | `meta.required` | boolean | `false` | An empty value raises `field_required` (error). |
 | `meta.readonly` | boolean | `false` | Read-only in the inspector. |
 | `meta.hidden` | boolean | `false` | Not shown in the inspector, and never reported as missing. |
 | `meta.note`, `meta.conditions`, `meta.display`, `meta.display_options`, `meta.sort` | | | Passed to the form unchecked. |
-| `schema.default_value` | any JSON | | Filled in when a node or connection is created (deep-copied). `null` defaults are skipped, as in the Directus form. |
+| `schema.default_value` | any JSON | | Filled in when a node or connection is created (deep-copied). `null` defaults are skipped, as in the Directus form. The options form edits it as text, converted by `type` (see [The options form](#the-options-form)). |
 
 Validation checks only `required`: a required field is missing when its value is absent, `null`, `""` or `[]`. Hidden fields and `alias` fields are never reported. Values are not checked against the field's `type` or the interface's options (such as `min`); the inspector form enforces those while editing, but the hook does not.
 
-Selects and other interfaces with `meta.options.choices` show their choice text in titles, labels and card summaries, so a stored `team_lead` reads "Team lead".
+Selects and other interfaces with `meta.options.choices` show their choice text in titles, labels and card summaries, so a stored `team_lead` reads "Team lead". Item references show the referenced item's display text in the editor and its key elsewhere; see [Item references](#item-references).
 
 ```json
 "fields": [
@@ -474,10 +509,10 @@ Without a `starter`, "Create" seeds `limits.minInstances` nodes of every type th
 
 Titles, connection labels, dynamic output labels and the field row's summary are rendered from templates with `{{ token }}` placeholders, the syntax Directus display templates use.
 
-- A token is a path of one or more segments of letters, digits, `_`, `$` and `-`, separated by dots: `{{ title }}`, `{{ customer.name }}`, `{{ branches.0.label }}` (list items by index). Spaces just inside the braces are allowed. Anything else, such as spaces inside the path, brackets or expressions, renders empty.
+- A token is a path of one or more segments of letters, digits, `_`, `$` and `-`, separated by dots: `{{ title }}`, `{{ address.city }}` (a key inside a JSON object value), `{{ branches.0.label }}` (list items by index). Spaces just inside the braces are allowed. Anything else, such as spaces inside the path, brackets or expressions, renders empty.
 - Paths only read the value's own data. `__proto__`, `constructor` and `prototype` segments, and anything that does not exist, render empty.
 - The output is plain text, never HTML. Control characters other than tab and newline are removed.
-- Strings and numbers render as they are. When the token's first segment names a declared field, values are shown the way the form shows them: the choice text for fields with `meta.options.choices` (values compared as text) and Yes or No for booleans. Lists are joined with ", ", leaving out empty items; lists nested more than eight levels deep render empty. Objects render empty: use a path into them instead.
+- Strings and numbers render as they are. When the token's first segment names a declared field, values are shown the way the form shows them: the choice text for fields with `meta.options.choices` (values compared as text) and Yes or No for booleans. Lists are joined with ", ", leaving out empty items; lists nested more than eight levels deep render empty. Objects render empty: use a path into them instead. The exception is an [item reference](#item-references), which renders as the referenced item's display text in the editor and as its key elsewhere.
 
 ### Node titles
 
@@ -510,6 +545,28 @@ Without a template the text is "3 nodes · 2 connections", with singular words f
 
 Card summaries (`summaryFields`) are not templates: each row is the field's name over its formatted value, and empty values are left out.
 
+### Item references
+
+A node or edge field can point at an item of another collection with the stock **Collection Item Dropdown** (`collection-item-dropdown`) or **Collection Item Multiple Dropdown** (`collection-item-multiple-dropdown`) interface. Neither needs a relation, so both work in the inspector. Give the field the type `json` and the interface options `selectedCollection` (Collection, required), and optionally `template` (Display Template) and `filter`. The dropdown stores `{ "key": 3, "collection": "customers" }` and the multiple dropdown a list of those.
+
+```json
+{
+	"field": "customer",
+	"name": "Customer",
+	"type": "json",
+	"meta": { "interface": "collection-item-dropdown", "options": { "selectedCollection": "customers" } }
+}
+```
+
+A value counts as a reference when it belongs to a field with one of these two interfaces (an object with a `key`, whose `collection` defaults to the field's `selectedCollection`), or, for any field, when it is a plain object with exactly a `key` (text or a number) and a `collection` (text). Custom pickers that store the same shape are therefore treated the same way. Lists of references are joined with ", ". Other objects still render empty.
+
+- **In templates and summaries**, `{{customer}}` and a `customer` entry in `summaryFields` show the referenced item's display text, so a card reads "Start for ssh-adserver" and lists Customer "ssh-adserver". Paths still read the stored value: `{{customer.key}}` is the key and `{{customer.collection}}` the collection.
+- **The display text** comes from the field's own `template` option (Display Template, read only for the two stock interfaces), else the collection's display template, else the primary key, the same order as the stock interface. It is rendered as plain text with the template rules above, against the item's fields, so relational paths such as `{{region.name}}` work. Displays are not applied: a date shows as stored, and a relational field without a path shows its key.
+- **The editor shows names.** While the editor is open it loads the referenced items with one request per collection, asking only for the fields the templates need. It shows names on cards, connection labels, the inspector header, the issues list and issue messages. Until the items arrive, and for items that were deleted or that the user may not read, it shows the key. A collection the user cannot read is not requested at all.
+- **Everywhere else shows keys.** The server-side hook and the summary display never fetch items, so a title such as `Start for {{customer}}` reads "Start for 3" in the messages the hook returns, and in anything else that renders titles outside the editor. The field row and the display show only counts. The hook does not check that a referenced item exists.
+- A reference always counts as a filled token: where no name is known, a title whose only token is a reference shows the key rather than falling back to the type label.
+- Labels of [dynamic outputs](#dynamic-outputs) show references by their key.
+
 ## Issue codes
 
 | Code | Default | Attached to | Raised when |
@@ -541,7 +598,7 @@ Card summaries (`summaryFields`) are not templates: each row is the field's name
 
 The completeness checks and deprecation are warnings so that a freshly created or half-built graph can be saved; everything else is an error. A connection with a missing node only raises `dangling_edge`, and the ports and connection rules of a connection to or from a node of an unknown type are not checked (its edge type, required fields and self loop still are). Issues are listed errors first, then warnings, each in the order they were found.
 
-Messages name node titles (or ids), type labels and port labels, and never other field values, because the hook returns them to API clients. Examples:
+Messages name node titles (or ids), type labels and port labels, and never other field values, because the hook returns them to API clients. A title that shows an [item reference](#item-references) names it by its key in the hook's messages and by its display text in the editor. Examples:
 
 ```text
 "Approval": "Approver" is required.

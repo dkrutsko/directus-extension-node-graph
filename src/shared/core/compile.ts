@@ -175,8 +175,8 @@ export interface CompileResult {
 
 /**
  * Checks and compiles a ruleset. Accepts the parsed object or a JSON string
- * (the stock input-code interface stores a parsed object for a `json` option,
- * but values written through the API may be strings). Never throws.
+ * (the options form stores an object, but values written through the API, or
+ * by an earlier version of the options, may be strings). Never throws.
  */
 export function compileRuleset(raw: unknown): CompileResult {
 	const problems: string[] = [];

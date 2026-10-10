@@ -1,6 +1,7 @@
 {
 	// Type-checks the tests together with the framework-free code they import
-	// (src/shared/core, hook, options and ui/documents.ts). `npm run check`
+	// (src/shared/core, hook, options, the options editor's conversion modules
+	// and ui/documents.ts). `npm run check`
 	// runs it after vue-tsc. There is no DOM library here on purpose: core and
 	// the hook are bundled into the API as well, so any accidental use of a
 	// DOM global fails this check. The tests compare against node:crypto and
@@ -21,6 +22,7 @@
 		"./src/shared/core/**/*.ts",
 		"./src/shared/hook/**/*.ts",
 		"./src/shared/options.ts",
+		"./src/shared/options-editor/**/*.ts",
 		"./tests/**/*.ts",
 		"./vitest.config.ts"
 	],

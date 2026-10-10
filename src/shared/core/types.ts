@@ -53,6 +53,29 @@ export interface NodeGraphField {
 	} | null;
 }
 
+/**
+ * A pointer to an item of another collection, the value the stock
+ * collection-item-dropdown interface stores
+ * (directus-11.17.4/app/src/interfaces/collection-item-dropdown/collection-item-dropdown.vue:17-20)
+ * and the multiple dropdown stores a list of. See references.ts.
+ */
+export interface ItemReference {
+	collection: string;
+	key: string | number;
+}
+
+/**
+ * The display text of a referenced item, or undefined when it is not known
+ * (not fetched yet, not readable, deleted). `field` is the node or edge field
+ * the value belongs to, when there is one, so a resolver can use the field's
+ * own display template.
+ *
+ * Core never fetches anything: the editor passes a resolver that reads the
+ * items it loaded (src/shared/ui/references.ts), while the hook and the
+ * display pass none, so there a reference reads as its key.
+ */
+export type ReferenceResolver = (reference: ItemReference, field?: NodeGraphField) => string | undefined;
+
 /* ------------------------------------------------------------------------ */
 /* Ruleset                                                                  */
 /* ------------------------------------------------------------------------ */
@@ -357,7 +380,7 @@ export type GraphCommand =
 export type EnforcementPolicy = 'ratchet' | 'reject' | 'log' | 'off';
 
 export interface NodeGraphFieldOptions {
-	/** The ruleset (json, edited with the stock input-code interface in JSON mode). */
+	/** The ruleset: an object, edited in the field settings by the options form (src/shared/options-editor); a JSON string written through the API is accepted too. */
 	ruleset?: Ruleset | string | null;
 	/** Field row and display template. Tokens: nodeCount, edgeCount, errorCount, warningCount, counts.<typeKey>, ruleset.name, ruleset.version. */
 	template?: string | null;

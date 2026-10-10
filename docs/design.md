@@ -318,7 +318,7 @@ All values are canvas px at zoom 1. W = 252.
 ### 5.4 Summary block (Flows overview)
 
 - `<dl class="ng-node__summary">` with one `<div><dt>Label</dt><dd>Value</dd></div>` per `nodeSummary()` row, padding 9px 12px. `dt`: 13px/18px, weight 600, `--theme--foreground`. `dd`: 13px/18px Fira Mono in `--theme--foreground-subdued`, one line with an ellipsis. This is `options-overview.vue:41-63` plus the global `dt`/`dd` colours (`_base.scss:121-147`, which theme.css overrides for layout).
-- `nodeSummary()` leaves out fields without a value, so a card only lists the summary fields that are filled in and its height varies with its content. An empty `dd`, should one ever render, shows `--` in `--theme--form--field--input--border-color`, exactly as `ValueNull` does (`views/private/components/value-null.vue`).
+- `nodeSummary()` leaves out fields without a value, so a card only lists the summary fields that are filled in and its height varies with its content. Item references show the referenced item's display text, which the shell loads while the editor is open (`src/shared/ui/references.ts`) and hands to the canvas as `CanvasProps.references`; until then they show their key. An empty `dd`, should one ever render, shows `--` in `--theme--form--field--input--border-color`, exactly as `ValueNull` does (`views/private/components/value-null.vue`).
 - When the card also has ports, a 2px `--theme--border-color-subdued` divider sits on top of the block (the tile footer divider), drawn as an inset shadow so it takes no space.
 - The block is left out when S = 0.
 
@@ -650,3 +650,22 @@ Run these against the canvas, with screenshots in light and dark, edit and read-
 5. Selected cards show the primary frame and soft halo; errors show a danger frame and badge; deprecated and unknown cards are dashed.
 6. The dots fade out in read-only mode; the canvas never scrolls the drawer; the palette never shows outside the drawer sidebar.
 7. Switching the user's appearance between light and dark, or changing the project colour, restyles the open editor without a reload.
+
+## 15. Options form
+
+The field's interface options (Data Model → field → Interface) are a custom options component, `src/shared/options-editor/NodeGraphOptions.vue`, built only from stock parts so it reads as part of the field settings drawer. Its CSS is `options-editor.css`; every rule starts at one of its roots: `.node-graph-options` (the options), `.node-graph-options-json` (the JSON drawer body) and `.node-graph-options-menu` (the Load Example menu), because the drawer and the menu are teleported.
+
+| Piece | Imitates | Source |
+|---|---|---|
+| Root layout | The `form-grid` mixin, in plain CSS: two columns, `--theme--form--row-gap` and `--theme--form--column-gap`, a size container | `styles/mixins/_form-grid.scss` |
+| Plain options | A `v-form` over the option fields, as Directus renders an options array (edit dots on values that are set, as in stock options) | `field-detail/shared/extension-options.vue:80-89` |
+| Status | `v-notice`: `success` "Valid ruleset: …", `danger` with a `#title` and the problems in a monospace list (`multiline indent-content`, the field row's notice spacing), `info` without a ruleset, `warning` for entries not stored as entered | `components/v-notice.vue`, §10.2 |
+| Ruleset actions | Small `secondary` `v-button`s with a left icon, 0.6875rem under the notices, as a Repeater's actions row sits under its list; Load Example opens a `v-menu` list with a description per example | `styles/mixins/_list-interface.scss` `list-interface-actions` |
+| Sections | `group-detail` fields (large divider title with a header icon, chevron, edit dot when collapsed with values); Ruleset, Data Types, Node Types and Edge Types start open, the rule sections closed | `interfaces/group-detail/group-detail.vue` |
+| Lists | The stock Repeater (`list`) with its primary "Add …" button, row template, drawers and discard dialog | `interfaces/list/list.vue` |
+| Field definitions | The stock Repeater's "Edit Fields": the same field set and pickers (`system-interface`, `system-interface-options`, `system-display`, `system-display-options`) in "Interface Options" and "Display Options" groups | `interfaces/list/options.vue:42-208` |
+| Explanations | `presentation-notice` fields and field notes (`type-note`, markdown with code for tokens) | `interfaces/presentation-notice` |
+| JSON editor | A stock `v-drawer` (icon `data_object`) with header action buttons (Copy, Download, then the primary Apply), the content padding of a Repeater item drawer, notices, and the `input-code` interface in JSON mode with line numbers and wrapping | `interfaces/list/list.vue:351-354`, `interfaces/input-code` |
+| Confirmations | `v-dialog` + `v-card`, `secondary` Cancel then the primary action ("Replace", "Discard Changes") | §9.7 |
+
+Copy is plain English in Title Case for buttons and dialog titles, sentence case elsewhere; Directus keys are reused where they match (`apply`, `cancel`, `copy`, `unsaved_changes`, `discard_changes`, `keep_editing`, and the field names of "Edit Fields"). Boolean labels are short ("Allow cycles"), because the checkbox row truncates at half width; the explanation goes in the note.

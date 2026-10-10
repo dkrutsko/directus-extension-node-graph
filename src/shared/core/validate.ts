@@ -21,6 +21,7 @@ import type {
 	Issue,
 	IssueCode,
 	NodeGraphField,
+	ReferenceResolver,
 	ValueReport,
 } from './types';
 import { echo, formatTitle, isPlainObject } from './util';
@@ -56,6 +57,16 @@ function draft(ref: IssueRef, message: string, detail?: string): Draft {
 	return issue;
 }
 
+export interface ValidateOptions {
+	/**
+	 * Display text of item references, for the node titles in messages. The
+	 * editor passes its resolver so messages match the cards; the hook passes
+	 * none. Messages are never part of a fingerprint, so the issues are the
+	 * same either way.
+	 */
+	references?: ReferenceResolver | null | undefined;
+}
+
 /**
  * Validates a document against a compiled ruleset and returns every issue,
  * errors first, then warnings, each group in document order. Issues whose
@@ -63,7 +74,7 @@ function draft(ref: IssueRef, message: string, detail?: string): Draft {
  * that is not a document yields a single `invalid_document` issue (use
  * normalizeDocument or validateValue for raw values).
  */
-export function validateDocument(ruleset: CompiledRuleset, document: GraphDocument): Issue[] {
+export function validateDocument(ruleset: CompiledRuleset, document: GraphDocument, options: ValidateOptions = {}): Issue[] {
 	const drafts: Draft[] = [];
 	const add = (ref: IssueRef, message: string, detail?: string) => drafts.push(draft(ref, message, detail));
 
@@ -80,7 +91,7 @@ export function validateDocument(ruleset: CompiledRuleset, document: GraphDocume
 	const { nodes, edges } = index;
 	const rules = ruleset.connectionRules;
 	const graphRules = ruleset.graphRules;
-	const name = (node: GraphNode | undefined) => nodeName(ruleset, node);
+	const name = (node: GraphNode | undefined) => nodeName(ruleset, node, options.references);
 
 	/* Ids ------------------------------------------------------------------- */
 

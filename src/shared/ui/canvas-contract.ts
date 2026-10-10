@@ -43,7 +43,7 @@
  *   same library with its own styles).
  */
 import type { Component } from 'vue';
-import type { GraphCommand, GraphDocument, Issue, IssueCode, Position } from '../core/types';
+import type { GraphCommand, GraphDocument, Issue, IssueCode, Position, ReferenceResolver } from '../core/types';
 import type { CompiledRuleset } from '../core';
 
 export const PALETTE_DRAG_MIME = 'application/x-directus-node-graph-type';
@@ -51,6 +51,18 @@ export const PALETTE_DRAG_MIME = 'application/x-directus-node-graph-type';
 export interface Selection {
 	kind: 'node' | 'edge';
 	ids: string[];
+}
+
+/**
+ * Display text of item references (src/shared/ui/references.ts). Pass
+ * `resolve` to the core text helpers (nodeTitle, nodeSummary, edgeLabel,
+ * canConnect's options) so references read as the referenced item's name.
+ * The shell replaces the object whenever labels arrive (`version` changes),
+ * and `resolve` reads that version too, so anything rendered from it updates.
+ */
+export interface ReferenceLabels {
+	resolve: ReferenceResolver;
+	version: number;
 }
 
 export interface CanvasProps {
@@ -64,6 +76,8 @@ export interface CanvasProps {
 	showMinimap: boolean;
 	/** Unique per editor instance; use it for library instance ids and DOM ids. */
 	instanceId: string;
+	/** Optional; without it, item references show their keys. */
+	references?: ReferenceLabels | null;
 }
 
 export interface CanvasEmits {

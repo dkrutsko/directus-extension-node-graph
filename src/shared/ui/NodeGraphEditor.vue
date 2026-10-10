@@ -36,7 +36,7 @@
  *   mount, newest first (directus-11.17.4/packages/composables/src/use-shortcut.ts:57-67).
  */
 
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue';
 import {
 	applyCommand,
 	canConnect,
@@ -58,6 +58,7 @@ import IssueList from './IssueList.vue';
 import NodeInspector from './NodeInspector.vue';
 import NodePalette from './NodePalette.vue';
 import { hasModifier, isEditableTarget, isMenuOpen, shortcutLabel } from './platform';
+import { REFERENCE_LABELS, useReferenceLabels } from './references';
 import type { EditorSession } from './types';
 
 const props = withDefaults(
@@ -130,22 +131,45 @@ let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
 /*
+ * Display text of item references in node and edge data (references.ts),
+ * loaded only while the drawer is open. The inspector and the issue lists
+ * inject it; the canvas gets it as a prop (canvas-contract.ts).
+ */
+const referenceLabels = useReferenceLabels({
+	document: graph,
+	ruleset: computed(() => props.ruleset),
+	active: computed(() => props.open),
+	logPrefix: `[${props.registration.interfaceId}]`,
+});
+
+provide(REFERENCE_LABELS, referenceLabels);
+
+/*
  * Validation runs when nodes or edges change, not on every pan and zoom
  * (setViewport replaces the document object but keeps both arrays,
  * core/commands.ts). Returning the same array keeps everything that depends
- * on `issues`, the canvas included, from updating needlessly.
+ * on `issues`, the canvas included, from updating needlessly. Messages name
+ * node titles, which can show item references, so arriving labels count as
+ * a change too.
  */
-let validated: { ruleset: CompiledRuleset; nodes: unknown; edges: unknown; issues: Issue[] } | null = null;
+let validated: { ruleset: CompiledRuleset; nodes: unknown; edges: unknown; labels: unknown; issues: Issue[] } | null = null;
 
 const issues = computed<Issue[]>(() => {
 	const document = graph.value;
+	const labels = referenceLabels.value;
 
-	if (validated && validated.ruleset === props.ruleset && validated.nodes === document.nodes && validated.edges === document.edges) {
+	if (
+		validated &&
+		validated.ruleset === props.ruleset &&
+		validated.nodes === document.nodes &&
+		validated.edges === document.edges &&
+		validated.labels === labels
+	) {
 		return validated.issues;
 	}
 
-	const result = validateDocument(props.ruleset, document);
-	validated = { ruleset: props.ruleset, nodes: document.nodes, edges: document.edges, issues: result };
+	const result = validateDocument(props.ruleset, document, { references: labels.resolve });
+	validated = { ruleset: props.ruleset, nodes: document.nodes, edges: document.edges, labels, issues: result };
 	return result;
 });
 const errorCount = computed(() => issues.value.filter((issue) => issue.severity === 'error').length);
@@ -319,14 +343,16 @@ function onCommand(command: GraphCommand) {
 
 /** Tells the user why a command did nothing, where that is not obvious. */
 function explainRefusal(command: GraphCommand, document: GraphDocument) {
+	const references = referenceLabels.value.resolve;
+
 	if (command.kind === 'addEdge') {
-		const result = canConnect(props.ruleset, document, command);
+		const result = canConnect(props.ruleset, document, command, { references });
 		if (!result.ok) showToast(result.message);
 		return;
 	}
 
 	if (command.kind === 'reconnectEdge') {
-		const result = canConnect(props.ruleset, document, command, { ignoreEdgeId: command.id });
+		const result = canConnect(props.ruleset, document, command, { ignoreEdgeId: command.id, references });
 		if (!result.ok) showToast(result.message);
 		return;
 	}
@@ -849,6 +875,7 @@ defineExpose({ focus: focusRoot });
 						:grid-size="options.gridSize"
 						:show-minimap="options.showMinimap"
 						:instance-id="instanceId"
+						:references="referenceLabels"
 						@command="onCommand"
 						@select="onSelect"
 						@connect-rejected="onConnectRejected"

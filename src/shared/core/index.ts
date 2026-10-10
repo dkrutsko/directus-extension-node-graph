@@ -42,12 +42,21 @@ export {
 } from './document';
 
 export { canConnect, type ConnectOptions } from './connect';
-export { issueFingerprint, sortIssues, validateDocument, validateValue, type IssueRef } from './validate';
+export { issueFingerprint, sortIssues, validateDocument, validateValue, type IssueRef, type ValidateOptions } from './validate';
 export { applyCommand } from './commands';
 export { computeMeta } from './meta';
 export { canonicalJson, graphHash, sha256Hex } from './hash';
-export { formatValue, renderTemplate, renderTemplateDetailed, type TemplateResult } from './template';
+export { formatValue, renderTemplate, renderTemplateDetailed, templatePaths, type TemplateResult } from './template';
 export { edgeLabel, nodeSummary, nodeTitle } from './labels';
+export {
+	REFERENCE_INTERFACES,
+	asReference,
+	collectReferences,
+	documentReferences,
+	isReferenceField,
+	referenceText,
+	type ReferenceOccurrence,
+} from './references';
 export { DEFAULT_FIELD_TEMPLATE, fieldSummary } from './summary';
 export { generateId } from './ids';
 export { exampleRuleset } from './example-ruleset';
