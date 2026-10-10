@@ -2,14 +2,15 @@
 
 A ruleset says what a node-graph field may contain: which node types exist, what fields and ports they have, which connections are allowed, and which problems are errors or warnings. The editor, the field row, the summary display and the server-side hook all use the same ruleset and the same checks, so they always agree.
 
-This page describes the format for people who write rulesets by hand. Two complete rulesets are in the repository:
+This page describes the format, for people who write rulesets by hand and for anyone who wants to know what the ruleset editor in the field settings writes: [the options form](#the-options-form) and its JSON editor edit the same document. Two complete rulesets are in the repository, and both are offered by **Load Example**:
 
-- [`examples/approval-workflow.json`](../examples/approval-workflow.json): the "Approval workflow" ruleset, the same one the code editor's template button inserts. It uses every feature at least once.
+- [`examples/approval-workflow.json`](../examples/approval-workflow.json): the "Approval workflow" ruleset. It uses every feature at least once.
 - [`examples/simple-approval.json`](../examples/simple-approval.json): a smaller ruleset with four node types and one edge type, a good starting point.
 
 ## Contents
 
 1. [Where the ruleset lives](#where-the-ruleset-lives)
+   - [The options form](#the-options-form)
 2. [How a ruleset is checked](#how-a-ruleset-is-checked)
 3. [Top level](#top-level)
 4. [Data types](#data-types)
@@ -31,7 +32,7 @@ This page describes the format for people who write rulesets by hand. Two comple
 
 ## Where the ruleset lives
 
-The ruleset is the **Ruleset** option of a Node Graph field (Settings, Data Model, the field, Interface). Directus stores it in `directus_fields.options.ruleset`, so it travels with schema snapshots. The option uses the stock code editor in JSON mode, which stores the parsed object; a ruleset written through the API may also be a JSON string, and both forms are accepted. The code editor's template button fills in the "Approval workflow" example.
+The ruleset is the **Ruleset** option of a Node Graph field (Settings, Data Model, the field, Interface). Directus stores it in `directus_fields.options.ruleset`, so it travels with schema snapshots. It is one JSON object in the format below. The field settings edit it with [the options form](#the-options-form), which stores the object; a ruleset written through the API may also be a JSON string, and both forms are accepted.
 
 The field's other options are resolved with defaults whenever they are read, because Directus does not save an option the admin never touched:
 
@@ -45,6 +46,39 @@ The field's other options are resolved with defaults whenever they are read, bec
 | Snap to Grid | `snapToGrid` | `true` | |
 | Grid Size | `gridSize` | `18` | Canvas units; rounded and clamped to 4-96. |
 | Minimap | `showMinimap` | `false` | |
+
+### The options form
+
+The interface options show the plain options above, then the ruleset as a form of stock Directus inputs: collapsible sections, Repeaters (the `list` interface) for lists, and the same interface and display pickers as the stock Repeater's "Edit Fields". **Edit as JSON** opens the whole ruleset in the code editor instead, and **Load Example** replaces it with one of the examples (asking first). Both edit the same stored document; the form is only another view of it.
+
+| Form | Ruleset keys |
+|---|---|
+| Ruleset section | `key`, `name`, `version`, `direction` |
+| Data Types section, one row per type | `dataTypes[]`: `key`, `label`, `color`, `accepts` |
+| Node Types section, one drawer per type | `nodeTypes[]`: `key`, `label`, `icon`, `color`, `category`, `description` |
+| … Behaviour | `deprecated`, `deletable`, `limits.minInstances`, `limits.maxInstances` |
+| … Card | `titleTemplate`, `summaryFields` |
+| … Fields, one drawer per field | `fields[]`: `field`, `name`, `type`, `meta.width`, `meta.required`, `meta.readonly`, `meta.hidden`, `meta.note`, `schema.default_value` (Default Value), `meta.interface` and `meta.options` (Interface Options), `meta.display` and `meta.display_options` (Display Options) |
+| … Ports: Inputs and Outputs | `inputs[]`, `outputs[]`: `key`, `label`, `dataType`, `side`, `minConnections`, `maxConnections`, and for outputs `edgeTypes` (Edge Types, and New Connections for its first entry) |
+| … Dynamic Outputs | `dynamicOutputs`: `field` (Source Field), `labelTemplate`, `placement`, and `port` (the port settings) |
+| Edge Types section, one drawer per type | `edgeTypes[]`: `key`, `label`, `style.path`, `style.marker`, `style.color`, `style.dashed`, `style.animated`, `labelTemplate`, `fields` (as for node types) |
+| Connection Rules section | `connectionRules`: `defaultEdgeType`, `typeCheck`, `allowSelfLoops`, `allowCycles`, `allowMultiEdges`, `pairs.mode` (Pair Rules), `pairs.rules[]` (Rules: `source`, `sourcePort`, `target`, `targetPort`, `message`) |
+| Graph Rules section | `graphRules`: `minNodes`, `maxNodes`, `maxEdges`, `entryNodeTypes`, `requireReachableFromEntry`, `requireConnected` |
+| Severity Overrides section, one row per code | `severity`: `{ "<code>": "<severity>" }` |
+| Starter Graph section | `starter.nodes[]` (`ref`, `type`, `position.x`, `position.y`, `data`) and `starter.edges[]` (`source`, `sourceHandle`, `target`, `targetHandle`, `type`, `data`) |
+
+`format` and `schemaVersion` are not shown; they are kept as they are, and the examples include them.
+
+What the form writes:
+
+- **Only what you change.** Every list row keeps the stored object it came from, and a change rebuilds the object from it, so keys the form does not show (`meta.conditions`, `meta.sort`, keys for a later version, notes) stay, and so do the order of lists and of keys. Keys that are new to an object go where this page lists them.
+- **No defaults.** A value equal to its documented default (`deletable: true`, `typeCheck: "strict"`, `width: "full"`, …) is written only if the key was already there; the form shows the default for an absent key. An emptied value (an empty text, a cleared number, an empty list) removes the key.
+- **Incomplete rows stay.** A node type without a key yet, or a field without a type, is stored as it is, and the problems list says what is missing. Only a severity override without an issue code cannot be stored (there is no key to store it under); the form keeps it and lists it under "Not saved as entered".
+- **References are not renamed.** Changing a key does not change the pair rules, entry node types, port edge types or starter graph that refer to it. Selects list such values as "(not defined)", and the problems list reports them.
+- **Default values are typed as text** and stored by the field's type: `true` or `false` for `boolean`; a number for `integer` (whole numbers only) and `float`; JSON for `json` (`{"a": 1}`, `["a"]`, `3`, `"text"`); a JSON list or comma-separated values for `csv`, stored as a list of text; and the text as it is for every other type (`bigInteger` and `decimal` stay text, as in the Directus app). Text that does not fit the type is stored as text and listed under "Not saved as entered". An unchanged default is kept exactly as stored, whatever its type.
+- **Nothing on open.** Opening the field settings writes nothing; only an edit does.
+
+A ruleset the form cannot show without changing it (a list that is not a list, a flag that is not `true` or `false`, a version that is text, a key such as `__proto__`), or text that is not JSON, opens in the JSON editor in place of the sections, with the reasons and the problems. Nothing is changed until you apply a fix. A ruleset stored as JSON text opens in the form and is stored as an object at the first change.
 
 ## How a ruleset is checked
 
@@ -220,7 +254,7 @@ Node types and edge types declare their fields in the Directus field shape, and 
 | `meta.readonly` | boolean | `false` | Read-only in the inspector. |
 | `meta.hidden` | boolean | `false` | Not shown in the inspector, and never reported as missing. |
 | `meta.note`, `meta.conditions`, `meta.display`, `meta.display_options`, `meta.sort` | | | Passed to the form unchecked. |
-| `schema.default_value` | any JSON | | Filled in when a node or connection is created (deep-copied). `null` defaults are skipped, as in the Directus form. |
+| `schema.default_value` | any JSON | | Filled in when a node or connection is created (deep-copied). `null` defaults are skipped, as in the Directus form. The options form edits it as text, converted by `type` (see [The options form](#the-options-form)). |
 
 Validation checks only `required`: a required field is missing when its value is absent, `null`, `""` or `[]`. Hidden fields and `alias` fields are never reported. Values are not checked against the field's `type` or the interface's options (such as `min`); the inspector form enforces those while editing, but the hook does not.
 

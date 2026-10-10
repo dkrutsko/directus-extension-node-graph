@@ -357,7 +357,7 @@ export type GraphCommand =
 export type EnforcementPolicy = 'ratchet' | 'reject' | 'log' | 'off';
 
 export interface NodeGraphFieldOptions {
-	/** The ruleset (json, edited with the stock input-code interface in JSON mode). */
+	/** The ruleset: an object, edited in the field settings by the options form (src/shared/options-editor); a JSON string written through the API is accepted too. */
 	ruleset?: Ruleset | string | null;
 	/** Field row and display template. Tokens: nodeCount, edgeCount, errorCount, warningCount, counts.<typeKey>, ruleset.name, ruleset.version. */
 	template?: string | null;

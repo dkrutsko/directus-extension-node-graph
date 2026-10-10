@@ -3,7 +3,7 @@
 ![npm](https://img.shields.io/npm/v/directus-extension-node-graph)
 ![build](https://img.shields.io/github/actions/workflow/status/dkrutsko/directus-extension-node-graph/build.yml)
 
-A node-graph field for [Directus](https://directus.io). It stores a graph of nodes and connections in a JSON field and edits it in a widened side drawer that looks like part of the Data Studio: Flows-style cards and arrows, the dotted Flows grid, and Directus components and theme tokens throughout. What a graph may contain is set per field with a JSON ruleset, which the editor checks while you draw and the server checks when the item is saved.
+A node-graph field for [Directus](https://directus.io). It stores a graph of nodes and connections in a JSON field and edits it in a widened side drawer that looks like part of the Data Studio: Flows-style cards and arrows, the dotted Flows grid, and Directus components and theme tokens throughout. What a graph may contain is set per field with a ruleset, edited in the field's interface options with stock Directus inputs (or as JSON), which the editor checks while you draw and the server checks when the item is saved.
 
 ![The editor with an approval workflow: node types on the left, the graph in the middle, the selected Approval node's fields and the issues on the right](docs/images/editor-light.png)
 
@@ -12,6 +12,7 @@ A node-graph field for [Directus](https://directus.io). It stores a graph of nod
 - **One bundle, three parts.** The **Node Graph** interface (`node-graph`), the **Node Graph Summary** display (`node-graph-summary`) and a hook (`node-graph-guard`) that validates graphs on the server.
 - **An editor in the stock drawer.** Node types in the drawer's sidebar (drag one onto the canvas or click it), the graph in the middle, and the selected node's or connection's fields in a Directus form on the right, above the list of issues. Undo and redo, zoom and fit to screen, snap to grid, an optional minimap, box selection and keyboard moves. Drawn with [Vue Flow](https://vueflow.dev).
 - **Rules as data.** A ruleset declares node types (icon, colour, palette category, fields, inputs and outputs, instance limits, deprecation), outputs generated from a repeater field, data types and which of them connect, connection types (path style, colour, dashes, label template, fields), connection rules (type checks, self loops, cycles, duplicate connections, allowed or denied pairs), graph rules (entry nodes, reachability, size limits), per-rule severities and the graph that "Create" starts from. No code, expressions or regular expressions.
+- **A ruleset editor in the field settings.** The ruleset is edited in Data Model with a form of collapsible sections, Repeaters and pickers, the way the stock Repeater's "Edit Fields" works, with live validation, examples to start from, and a JSON editor for pasting and exporting. The form never changes what it does not show.
 - **Checked while you draw.** Ports a connection may not end on are dimmed while it is drawn, and releasing on one says why. Everything that is still wrong is listed in the issues panel, errors first, and clicking an issue takes you to the element.
 - **One rules engine everywhere.** The editor, the field row, the display and the server use the same code, so they always agree.
 - **Server-side enforcement** for every write that goes through the item service (app, REST, GraphQL, imports, flows), with a **Ratchet** policy that accepts old errors but refuses new ones. A ruleset that does not compile cannot be saved.
@@ -33,7 +34,7 @@ The Marketplace cannot install it under the default [`MARKETPLACE_TRUST`](https:
 1. Restart Directus if you installed via npm or a local folder, and reload the Data Studio, which fetches extensions once when it starts.
 2. Settings, Extensions: confirm **directus-extension-node-graph** is enabled, with its interface, display and hook.
 3. Settings, Data Model, open a collection and create a field. Choose **Node Graph**, in the "Other" group. The field is stored as JSON.
-4. In the field's interface options, put a ruleset into **Ruleset**. Click the code editor's template button to start from the example "Approval workflow", or paste one of the files in [`examples/`](examples). [`docs/ruleset.md`](docs/ruleset.md) describes the format. A ruleset with problems cannot be saved, and the error lists them.
+4. In the field's interface options, set up the ruleset (see [The ruleset editor](#the-ruleset-editor)): click **Load Example** to start from "Approval workflow" or "Simple approval", or fill in the sections yourself. [`docs/ruleset.md`](docs/ruleset.md) describes the format. A ruleset with problems cannot be saved; the notice above the sections lists them.
 5. Adjust the other options if you like (below), and under Display pick **Node Graph Summary**.
 6. Save the field, open an item and click **Create** on the field row. The example ruleset starts with a Start and an End node: drag node types in from the left, connect an output to an input, edit a node in the inspector, then click the check button (or press ⌘⏎ / Ctrl+Enter) and save the item.
 
@@ -43,7 +44,7 @@ The editor stages the graph in the item form like the Repeater stages its items:
 
 | Option | Default | Description |
 |---|---|---|
-| Ruleset | none | The JSON ruleset. Until one is set the field shows a notice instead of the row. |
+| Ruleset | none | What a graph may contain, edited with [the ruleset editor](#the-ruleset-editor). Until one is set the field shows a notice instead of the row. |
 | Summary Template | "3 nodes · 2 connections" | Text of the field row and of the display. Tokens: `{{nodeCount}}`, `{{edgeCount}}`, `{{errorCount}}`, `{{warningCount}}`, `{{counts.<type key>}}`, `{{ruleset.name}}`, `{{ruleset.version}}`. |
 | Placeholder | "No graph yet" | Shown while the field is empty. |
 | Editor Width | Wide | Standard (the stock drawer width), Wide (80% of the window) or Full. |
@@ -51,6 +52,16 @@ The editor stages the graph in the item form like the Repeater stages its items:
 | Snap to Grid | on | Nodes snap to the grid when moved. |
 | Grid Size | 18 | In canvas units at 100% zoom, 4 to 96. 18 is the Flows grid. |
 | Minimap | off | A minimap in the bottom right corner of the canvas. |
+
+### The ruleset editor
+
+Under the plain options, the **Ruleset** part of the interface options is a form of stock Directus inputs:
+
+- A notice says whether the ruleset is valid, or lists its problems, the same list the server refuses the field save with. Under it, **Load Example** offers "Approval workflow" (every feature), "Simple approval" and "Blank", and asks before it replaces a ruleset. **Edit as JSON** opens the whole ruleset in the code editor in a drawer, with the problems checked as you type, **Copy** and **Download** buttons, and Apply. Use it to paste a ruleset from [`examples/`](examples) or from another field.
+- The ruleset itself is in collapsible sections: **Ruleset** (key, name, version, direction), **Data Types**, **Node Types**, **Edge Types**, **Connection Rules** (with the pair rules), **Graph Rules**, **Severity Overrides** and **Starter Graph**. Lists are Repeaters: a node type opens in a drawer with its identity, behaviour, card, **Fields**, **Ports** and **Dynamic Outputs**, and each of its fields opens in a further drawer configured like the stock Repeater's "Edit Fields": key, name, type, width, required, read-only, hidden, note, default value, and the interface and display with their options pickers.
+- Choices that refer to other parts of the ruleset (data types, node types, edge types, a type's own fields, starter nodes) come from what is already defined. Fields that allow patterns, such as pair rule ports (`branches.*`), are free text. Every field has a note; the template fields list their tokens.
+
+The form and the JSON editor edit the same document, stored in exactly the format [`docs/ruleset.md`](docs/ruleset.md#the-options-form) describes, so rulesets written by hand, through the API or with an earlier version keep working. The form only writes what you change: keys it does not show (such as a field's `conditions`, or keys for a later version) are kept, and defaults are not filled in. A ruleset it cannot show without changing it, or one stored as text that is not JSON, opens in the JSON editor instead, with the reasons. Nothing is stored until you save the field.
 
 The **Node Graph Summary** display shows the field row's text in tables and display templates, with an error icon when the stored graph has errors. It reads the field's own ruleset and template, so it has no options of its own.
 
@@ -94,7 +105,10 @@ The stock drawer has no width option, so the editor widens it, and fits its body
 
 ## Limitations
 
-- Rulesets are edited as raw JSON in the code editor; there is no visual ruleset editor yet. Renaming a node type, port or field key in a ruleset does not migrate stored graphs: their elements are kept and reported as issues until someone fixes them.
+- Renaming a node type, port or field key in a ruleset does not migrate stored graphs: their elements are kept and reported as issues until someone fixes them. The ruleset editor does not follow a rename either: references to the old key (pair rules, entry node types, the starter graph) are listed as "not defined" and reported as problems until you change them.
+- In the ruleset editor, changes in a nested drawer (a field inside a node type) count once the outer drawers are applied too, as in any Repeater. A node type's own fields are suggested for its summary fields only once the node type has been applied; until then type the key.
+- The colour picker takes hex colours and theme variables such as `var(--theme--primary)`; it turns names and `rgb()` into hex and clears `color-mix()`. Write those in the JSON editor.
+- When the server refuses a field save (a ruleset with problems), Directus closes the field settings anyway and the unsaved changes are lost; the problems are listed above the sections before you save.
 - In the Wide drawer with the palette and the inspector open, the canvas is about 730px wide, so fit to screen shows a medium-sized graph at around 40% and the card text is small. Zoom in, or use the Full width.
 - When the editor is narrower than 50rem (the Standard width, or any width on a narrow screen) the inspector and issues move under the canvas, and opening the "Node Types" section in a narrow drawer pushes the fitted graph partly out of view until you click fit.
 - Outputs generated from a repeater field are keyed by position, so reordering the repeater's items moves their connections.
@@ -106,7 +120,7 @@ The stock drawer has no width option, so the editor widens it, and fits its body
 - When the selection includes a node that cannot be deleted, the Delete key and the inspector disagree about what can be deleted.
 - Under the field, a refused save shows only the generic "Value doesn't have the correct format"; the details are in the form's error notice.
 - In the example ruleset, Event ports use the warning colour, the same orange as a port with a warning.
-- The app bundle (`dist/app.js`) is about 405 KB, 123 KB gzipped, and like every app extension it is loaded on every Data Studio page. About 63 KB of it is CSS, which the extensions SDK embeds unminified, and the minimap package adds about 54 KB even when no field turns the minimap on.
+- The app bundle (`dist/app.js`) is about 466 KB, 139 KB gzipped, and like every app extension it is loaded on every Data Studio page. About 67 KB of it is CSS, which the extensions SDK embeds unminified. The minimap package adds about 54 KB even when no field turns the minimap on, and the ruleset editor of the field settings about 61 KB.
 
 ## Development
 
@@ -125,8 +139,9 @@ The code is laid out as follows:
 - `src/shared/core` is the framework-free rules engine: compiling rulesets, reading stored values, validation, the connection check, editor commands, templates and hashing. It runs in both the app and the API bundle, so it uses no Vue, DOM or Node APIs.
 - `src/shared/ui` is the editor shell (field row, drawer, palette, inspector, issues, history, keyboard, apply and cancel) and `theme.css`. It knows nothing about Vue Flow.
 - `src/canvas` is the Vue Flow canvas. It implements `src/shared/ui/canvas-contract.ts`, the only seam between the shell and the graph library.
-- `src/shared/display` and `src/shared/hook` are the display and the server-side guard, and `src/shared/options.ts` the interface options.
-- `tests` holds the unit tests of the core, the hook and the options, `examples` the example rulesets, and `docs` the [ruleset reference](docs/ruleset.md) and the [design spec](docs/design.md).
+- `src/shared/display` and `src/shared/hook` are the display and the server-side guard, and `src/shared/options.ts` the plain interface options and their defaults.
+- `src/shared/options-editor` is the options component with the ruleset editor: `view-model.ts` converts between the stored ruleset and the form's flat rows, `form-fields.ts` declares the form's stock interfaces, and `NodeGraphOptions.vue` puts them together.
+- `tests` holds the unit tests of the core, the hook, the options and the ruleset editor's conversion, `examples` the example rulesets, and `docs` the [ruleset reference](docs/ruleset.md) and the [design spec](docs/design.md).
 
 ## Releasing
 

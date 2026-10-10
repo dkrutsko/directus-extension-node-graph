@@ -1,12 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { compileRuleset, exampleRuleset } from '../src/shared/core';
-import { RULESET_TEMPLATE, nodeGraphOptions, resolveFieldOptions } from '../src/shared/options';
+import { RULESET_TEMPLATE, generalOptionFields, resolveFieldOptions } from '../src/shared/options';
 
-describe('nodeGraphOptions', () => {
-	test('declares the documented options, in order', () => {
-		expect(nodeGraphOptions.map((option) => option.field)).toEqual([
-			'ruleset',
+describe('generalOptionFields', () => {
+	test('declares the documented plain options, in order (the ruleset has its own form)', () => {
+		expect(generalOptionFields.map((option) => option.field)).toEqual([
 			'template',
 			'placeholder',
 			'editorWidth',
@@ -17,21 +16,12 @@ describe('nodeGraphOptions', () => {
 		]);
 	});
 
-	test('the ruleset option is a json field edited with input-code, with the example as its template', () => {
-		const ruleset = nodeGraphOptions[0]!;
-
-		expect(ruleset.type).toBe('json');
-		expect(ruleset.meta?.interface).toBe('input-code');
-		expect(ruleset.meta?.width).toBe('full');
-
-		// input-code emits JSON.parse(template) for json fields, so the template must parse and compile.
-		const template = ruleset.meta?.options?.['template'] as string;
-		expect(template).toBe(RULESET_TEMPLATE);
-		expect(compileRuleset(JSON.parse(template)).problems).toEqual([]);
+	test('the example template parses and compiles', () => {
+		expect(compileRuleset(JSON.parse(RULESET_TEMPLATE)).problems).toEqual([]);
 	});
 
 	test('defaults match resolveFieldOptions', () => {
-		const defaults = Object.fromEntries(nodeGraphOptions.filter((option) => option.schema).map((option) => [option.field, option.schema!.default_value]));
+		const defaults = Object.fromEntries(generalOptionFields.filter((option) => option.schema).map((option) => [option.field, option.schema!.default_value]));
 		const resolved = resolveFieldOptions({});
 
 		for (const [key, value] of Object.entries(defaults)) {

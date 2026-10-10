@@ -1,13 +1,20 @@
 /**
- * Interface options of the node-graph field, for `defineInterface({ options })`
- * in src/interface.ts, plus the resolver that turns the stored options
+ * Interface options of the node-graph field: the plain options as Directus
+ * field definitions, and the resolver that turns the stored options
  * (directus_fields.meta.options) into values with defaults applied.
  *
- * Option defaults (`schema.default_value`) only pre-fill the field setup form
- * in Data Model; an option the admin never touched is simply absent from the
- * stored options, so the interface, the display and the hook must all read
- * options through `resolveFieldOptions()` rather than trusting the defaults
- * here to have been saved.
+ * The options are edited by a custom options component
+ * (options-editor/NodeGraphOptions.vue, `defineInterface({ options })` in
+ * src/interface.ts). It renders `generalOptionFields` with the app's v-form,
+ * exactly as Directus would render an options array, and edits the `ruleset`
+ * option with its own form of stock interfaces. The stored shape is the same
+ * either way: one object with the keys of NodeGraphFieldOptions.
+ *
+ * Option defaults (`schema.default_value`) only pre-fill the form; an option
+ * the admin never touched is simply absent from the stored options, so the
+ * interface, the display and the hook must all read options through
+ * `resolveFieldOptions()` rather than trusting the defaults here to have
+ * been saved.
  */
 
 import type { AppField, DeepPartial } from '@directus/types';
@@ -42,14 +49,11 @@ const EDITOR_WIDTHS = new Set<string>(['standard', 'wide', 'full']);
 const ENFORCEMENT_POLICIES = new Set<string>(['ratchet', 'reject', 'log', 'off']);
 
 /**
- * The example ruleset as the input-code interface's `template`. For a field of
- * type `json` the stock interface shows a "Fill template" button and, when
- * clicked, emits `JSON.parse(template)` (the parsed object, not the string;
- * directus-11.17.4/app/src/interfaces/input-code/input-code.vue:282-292, and
- * the button at :303-313). Edits in JSON mode are stored as parsed objects
- * too (:77-92), so a ruleset saved through Data Model arrives as an object;
- * one written through the API may still be a string, which compileRuleset
- * also accepts.
+ * The example ruleset as pretty JSON with tabs: the text of
+ * examples/approval-workflow.json (tests/options.test.ts compares them) and
+ * the format the options form's JSON editor shows and exports. The form
+ * stores the ruleset as an object; one written through the API may be a JSON
+ * string, which compileRuleset and the form also accept.
  */
 export const RULESET_TEMPLATE = JSON.stringify(exampleRuleset, null, '\t');
 
@@ -57,28 +61,15 @@ const TEMPLATE_TOKENS =
 	'`{{nodeCount}}`, `{{edgeCount}}`, `{{errorCount}}`, `{{warningCount}}`, `{{counts.<type key>}}`, `{{ruleset.name}}`, `{{ruleset.version}}`';
 
 /**
- * Typed as `DeepPartial<AppField>` (not `Field`): that is what
- * defineInterface's `options` expects (@directus/types InterfaceConfig), and
- * `Field.schema` may be null where `AppField.schema` may not, so a
- * `Field`-typed array fails vue-tsc.
+ * Every option except `ruleset`, as the Directus field definitions of an
+ * options array. The options component shows them in a v-form above the
+ * ruleset, the way extension-options.vue would show an options array
+ * (directus-11.17.4/app/src/modules/settings/routes/data-model/field-detail/shared/extension-options.vue:80-89).
+ *
+ * Typed as `DeepPartial<AppField>` (not `Field`): `Field.schema` may be null
+ * where `AppField.schema` may not, so a `Field`-typed array fails vue-tsc.
  */
-export const nodeGraphOptions: DeepPartial<AppField>[] = [
-	{
-		field: 'ruleset',
-		name: 'Ruleset',
-		type: 'json',
-		meta: {
-			width: 'full',
-			// In JSON mode because the option's type is json (input-code.vue:128);
-			// the `language` option does not apply to json fields.
-			interface: 'input-code',
-			options: {
-				lineNumber: true,
-				template: RULESET_TEMPLATE,
-			},
-			note: 'Node types, ports, fields, connection and graph rules, as JSON. Use the button in the editor to start from the example "Approval workflow" ruleset. The ruleset is checked when the field is saved.',
-		},
-	},
+export const generalOptionFields: DeepPartial<AppField>[] = [
 	{
 		field: 'template',
 		name: 'Summary Template',
@@ -187,7 +178,7 @@ export const nodeGraphOptions: DeepPartial<AppField>[] = [
 			width: 'half',
 			interface: 'boolean',
 			options: {
-				label: 'Show a minimap where the library has one',
+				label: 'Show a minimap',
 			},
 		},
 		schema: {

@@ -1,0 +1,105 @@
+/**
+ * The options form (NodeGraphOptions.vue), its JSON drawer and its menu.
+ *
+ * Unscoped because the drawer and the menu are teleported out of the
+ * component's element (#dialog-outlet, #menu-outlet); every rule therefore
+ * starts at one of three roots: `.node-graph-options` (the options),
+ * `.node-graph-options-json` (the drawer body) or `.node-graph-options-menu`
+ * (the Load Example menu). Only Directus theme tokens and root variables are
+ * used.
+ */
+
+/*
+ * The stock form grid (directus-11.17.4/app/src/styles/mixins/_form-grid.scss),
+ * in plain CSS: the v-forms inside are form grids themselves, so the blocks
+ * between them (actions, notices, the JSON editor) take full rows with the
+ * same row gap and line up with the fields.
+ */
+:is(.node-graph-options, .node-graph-options-json) {
+	display: grid;
+	grid-template-columns: [start] minmax(0, 1fr) [half] minmax(0, 1fr) [full];
+	gap: var(--theme--form--row-gap) var(--theme--form--column-gap);
+	container-type: inline-size;
+}
+
+:is(.node-graph-options, .node-graph-options-json) > * {
+	grid-column: start / full;
+	min-inline-size: var(--form-column-min-width, 0);
+}
+
+:is(.node-graph-options, .node-graph-options-json) .type-label {
+	margin-block-end: 0.4375rem;
+}
+
+/* The drawer body pads like a Repeater item drawer (interfaces/list/list.vue:351-354). */
+.node-graph-options-json {
+	padding: var(--content-padding);
+	padding-block-end: var(--content-padding-bottom);
+}
+
+/*
+ * The ruleset's status notices and its actions form one block, the way a
+ * Repeater's list and its actions row do: the actions sit 0.6875rem under the
+ * notices (styles/mixins/_list-interface.scss `list-interface-actions`).
+ */
+.node-graph-options .ng-options-head {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6875rem;
+}
+
+.node-graph-options .ng-options-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4375rem;
+}
+
+/*
+ * Notices with a title and a list: content on its own line under the title,
+ * spaced like the stock validation notices
+ * (interfaces/_system/system-mcp-prompts-collection-validation/system-mcp-prompts-collection-validation-existing.vue:22-51, 83-88),
+ * as the field row's ruleset notice does (src/shared/ui/NodeGraphInterface.vue).
+ */
+:is(.node-graph-options, .node-graph-options-json) .ng-options-notice .v-notice-content {
+	flex-basis: 100%;
+}
+
+:is(.node-graph-options, .node-graph-options-json) .ng-options-notice__content {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5625rem;
+	padding-block: 0.5625rem 0.25rem;
+}
+
+:is(.node-graph-options, .node-graph-options-json) .ng-options-notice__content p {
+	margin: 0;
+}
+
+:is(.node-graph-options, .node-graph-options-json) .ng-options-problems {
+	margin: 0;
+	padding-inline-start: 1.125rem;
+	font-family: var(--theme--fonts--monospace--font-family);
+	font-size: 0.8125rem;
+	overflow-wrap: anywhere;
+}
+
+:is(.node-graph-options, .node-graph-options-json) .ng-options-problems--text {
+	font-family: inherit;
+}
+
+/* "Load Example" menu (teleported to the menu outlet, hence its own root): the name over a one-line description */
+.node-graph-options-menu .ng-options-example {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.node-graph-options-menu .ng-options-example__name {
+	color: var(--theme--foreground);
+}
+
+.node-graph-options-menu .ng-options-example__description {
+	color: var(--theme--foreground-subdued);
+	font-size: 0.75rem;
+}
