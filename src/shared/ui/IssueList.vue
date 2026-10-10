@@ -8,8 +8,9 @@
  * selects that element and pans the canvas to it.
  */
 
-import { computed } from 'vue';
-import { nodeTitle, type CompiledRuleset, type GraphDocument, type Issue } from '../core';
+import { computed, inject } from 'vue';
+import { nodeTitle, type CompiledRuleset, type GraphDocument, type GraphNode, type Issue } from '../core';
+import { REFERENCE_LABELS } from './references';
 
 const props = withDefaults(
 	defineProps<{
@@ -31,6 +32,10 @@ const emit = defineEmits<{
 	pick: [issue: Issue];
 }>();
 
+/* The editor's item reference labels (references.ts), so element titles match the cards; keys without them. */
+const referenceLabels = inject(REFERENCE_LABELS, null);
+const title = (node: GraphNode) => nodeTitle(props.ruleset, node, referenceLabels?.value.resolve);
+
 const nodesById = computed(() => new Map(props.document.nodes.map((node) => [node.id, node])));
 const edgesById = computed(() => new Map(props.document.edges.map((edge) => [edge.id, edge])));
 
@@ -45,7 +50,7 @@ function elementText(issue: Issue): string | null {
 
 	if (issue.nodeId) {
 		const node = nodesById.value.get(issue.nodeId);
-		return node ? nodeTitle(props.ruleset, node) : null;
+		return node ? title(node) : null;
 	}
 
 	if (issue.edgeId) {
@@ -54,8 +59,8 @@ function elementText(issue: Issue): string | null {
 
 		const source = nodesById.value.get(edge.source);
 		const target = nodesById.value.get(edge.target);
-		const from = source ? nodeTitle(props.ruleset, source) : edge.source;
-		const to = target ? nodeTitle(props.ruleset, target) : edge.target;
+		const from = source ? title(source) : edge.source;
+		const to = target ? title(target) : edge.target;
 		return `${from} → ${to}`;
 	}
 

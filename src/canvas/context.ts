@@ -4,8 +4,9 @@
  *
  * Vue Flow only ever holds ids, positions and an aria label for each element
  * (see VueFlowCanvas.vue, "Reconciling"). Everything a card or an edge shows
- * (type, title, summary, ports, issues, selection) is read from the graph
- * document through this context instead, so the document stays the single
+ * (type, title, summary, ports, issues, selection, and the names of items
+ * that fields reference) is read from the graph document through this
+ * context instead, so the document stays the single
  * source of truth (canvas-contract.ts) and nothing the library does not
  * understand is ever kept only inside its model.
  *
@@ -19,6 +20,7 @@
 
 import type { ComputedRef, InjectionKey, Ref } from 'vue';
 import type { CompiledRuleset, ConnectResult, GraphDocument, GraphEdge, GraphNode, Issue, NodePorts, ResolvedPort } from '../shared/core';
+import type { ReferenceLabels } from '../shared/ui/canvas-contract';
 
 /** Vue Flow's handle types: outputs are 'source' handles, inputs 'target' handles. */
 export type HandleType = 'source' | 'target';
@@ -53,6 +55,8 @@ export interface CanvasContext {
 	ruleset: ComputedRef<CompiledRuleset>;
 	document: ComputedRef<GraphDocument>;
 	readOnly: ComputedRef<boolean>;
+	/** Display text of item references for titles, summaries and labels; null shows their keys. */
+	references: ComputedRef<ReferenceLabels | null>;
 	nodeById: ComputedRef<Map<string, GraphNode>>;
 	edgeById: ComputedRef<Map<string, GraphEdge>>;
 	/** getDocumentPorts(): declared ports plus placeholders for ports that edges reference but nodes do not declare. */

@@ -55,10 +55,13 @@ const typeLabel = computed(() => (placeholder.value ? 'Unknown type' : (type.val
 const title = computed(() => {
 	if (!node.value) return '';
 	if (placeholder.value) return node.value.type || 'Unknown node';
-	return nodeTitle(context.ruleset.value, node.value);
+	return nodeTitle(context.ruleset.value, node.value, context.references.value?.resolve);
 });
 
-const summary = computed(() => (node.value && !placeholder.value ? nodeSummary(context.ruleset.value, node.value) : []));
+/* Item references read as the referenced item's name once the shell has loaded it, and as their key until then. */
+const summary = computed(() =>
+	node.value && !placeholder.value ? nodeSummary(context.ruleset.value, node.value, context.references.value?.resolve) : [],
+);
 
 /*
  * Issue state as primitives: the shell validates on every drag frame and

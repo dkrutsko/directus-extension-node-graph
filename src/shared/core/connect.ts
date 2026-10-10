@@ -7,7 +7,7 @@
 import { connectionKey, indexDocument, pairViolation, portKey, reaches } from './graph-index';
 import { nodeName, plural, portName } from './messages';
 import { dataTypeAccepts } from './ports';
-import type { CompiledRuleset, ConnectResult, Connection, GraphDocument, IssueCode } from './types';
+import type { CompiledRuleset, ConnectResult, Connection, GraphDocument, IssueCode, ReferenceResolver } from './types';
 import { echo } from './util';
 
 export interface ConnectOptions {
@@ -17,6 +17,8 @@ export interface ConnectOptions {
 	 * itself.
 	 */
 	ignoreEdgeId?: string;
+	/** Display text of item references, for the node titles in messages (see validate.ts ValidateOptions). */
+	references?: ReferenceResolver | null | undefined;
 }
 
 /**
@@ -58,8 +60,8 @@ export function canConnect(
 	const sourceType = ruleset.nodeTypeMap.get(source.type);
 	const targetType = ruleset.nodeTypeMap.get(target.type);
 
-	if (!sourceType) return fail('unknown_node_type', `${nodeName(ruleset, source)} has an unknown node type and cannot be connected.`);
-	if (!targetType) return fail('unknown_node_type', `${nodeName(ruleset, target)} has an unknown node type and cannot be connected.`);
+	if (!sourceType) return fail('unknown_node_type', `${nodeName(ruleset, source, options.references)} has an unknown node type and cannot be connected.`);
+	if (!targetType) return fail('unknown_node_type', `${nodeName(ruleset, target, options.references)} has an unknown node type and cannot be connected.`);
 
 	const sourcePorts = index.portsById.get(source.id)!;
 	const targetPorts = index.portsById.get(target.id)!;
@@ -75,8 +77,8 @@ export function canConnect(
 		if (reversed) return fail('wrong_direction', 'Connections run from an output to an input.');
 
 		return !output
-			? fail('unknown_port', `${nodeName(ruleset, source)} has no output "${echo(connection.sourceHandle)}".`)
-			: fail('unknown_port', `${nodeName(ruleset, target)} has no input "${echo(connection.targetHandle)}".`);
+			? fail('unknown_port', `${nodeName(ruleset, source, options.references)} has no output "${echo(connection.sourceHandle)}".`)
+			: fail('unknown_port', `${nodeName(ruleset, target, options.references)} has no input "${echo(connection.targetHandle)}".`);
 	}
 
 	if (source.id === target.id && !rules.allowSelfLoops && enforced('self_loop')) {

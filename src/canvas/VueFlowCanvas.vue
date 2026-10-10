@@ -260,6 +260,7 @@ const context: CanvasContext = {
 	ruleset: computed(() => props.ruleset),
 	document: computed(() => props.document),
 	readOnly: computed(() => props.readOnly),
+	references: computed(() => props.references ?? null),
 	nodeById,
 	edgeById,
 	ports,
@@ -384,17 +385,24 @@ function emitViewport() {
 const syncedNodes = new Map<string, GraphNode>();
 let syncedEdges = new Map<string, GraphEdge>();
 let syncedRuleset: CompiledRuleset | null = null;
+/** The reference labels the store's aria labels were last built with (titles can show item names). */
+let syncedLabels: unknown = null;
 
 function nodeAriaLabel(node: GraphNode): string {
 	const type = props.ruleset.nodeTypeMap.get(node.type);
-	return `${type?.label ?? 'Unknown type'}: ${nodeTitle(props.ruleset, node)}`;
+	return `${type?.label ?? 'Unknown type'}: ${nodeTitle(props.ruleset, node, props.references?.resolve)}`;
 }
 
 function edgeAriaLabel(edge: GraphEdge): string {
 	const source = nodeById.value.get(edge.source);
 	const target = nodeById.value.get(edge.target);
-	const name = (node: GraphNode | undefined) => (node ? nodeTitle(props.ruleset, node) : '?');
+	const name = (node: GraphNode | undefined) => (node ? nodeTitle(props.ruleset, node, props.references?.resolve) : '?');
 	return `Connection from ${name(source)} to ${name(target)}`;
+}
+
+/** canConnect options with the reference labels, so refusal messages name nodes as their cards do. */
+function connectOptions(ignoreEdgeId?: string) {
+	return ignoreEdgeId === undefined ? { references: props.references?.resolve } : { ignoreEdgeId, references: props.references?.resolve };
 }
 
 function toFlowNode(node: GraphNode): FlowNodeInput {
@@ -433,8 +441,10 @@ function toFlowEdge(edge: GraphEdge): FlowEdgeInput {
 function syncNodes(): { structural: boolean; relabelled: boolean } {
 	const nodes = [...nodeById.value.values()];
 	const store = flow.nodes.value;
-	const rulesetChanged = syncedRuleset !== props.ruleset;
+	// Arriving reference labels change titles without changing any node, like a new ruleset.
+	const rulesetChanged = syncedRuleset !== props.ruleset || syncedLabels !== (props.references ?? null);
 	syncedRuleset = props.ruleset;
+	syncedLabels = props.references ?? null;
 
 	const sameOrder = store.length === nodes.length && nodes.every((node, index) => store[index]?.id === toFlowId(node.id));
 
@@ -573,7 +583,7 @@ function sync() {
 	if (structural) void nextTick(restorePositions);
 }
 
-watch([() => props.document.nodes, () => props.document.edges, () => props.ruleset, () => props.selection], sync, {
+watch([() => props.document.nodes, () => props.document.edges, () => props.ruleset, () => props.selection, () => props.references], sync, {
 	immediate: true,
 });
 
@@ -697,7 +707,7 @@ flow.onConnect((flowConnection) => {
 	gesture.handled = true;
 
 	const connection = toDocumentConnection(flowConnection);
-	const result = canConnect(props.ruleset, props.document, connection);
+	const result = canConnect(props.ruleset, props.document, connection, connectOptions());
 
 	if (!result.ok) {
 		emit('connect-rejected', { code: result.code, message: result.message });
@@ -772,7 +782,7 @@ function startDrawing(flowNodeId: string, flowHandleId: string, type: HandleType
 					? { source: fromNode, sourceHandle: fromKey, target: nodeId, targetHandle: port.key }
 					: { source: nodeId, sourceHandle: port.key, target: fromNode, targetHandle: fromKey };
 
-			const verdict = reconnect ? reconnectVerdict(reconnect, connection) : canConnect(props.ruleset, props.document, connection);
+			const verdict = reconnect ? reconnectVerdict(reconnect, connection) : canConnect(props.ruleset, props.document, connection, connectOptions());
 			verdicts.set(handleKey(toFlowId(nodeId), candidateType, toFlowId(port.key)), verdict);
 		}
 	}
@@ -791,7 +801,7 @@ function startDrawing(flowNodeId: string, flowHandleId: string, type: HandleType
 }
 
 function reconnectVerdict(edge: GraphEdge, connection: Connection): ConnectResult {
-	const options = { ignoreEdgeId: edge.id };
+	const options = connectOptions(edge.id);
 	const result = canConnect(props.ruleset, props.document, { ...connection, type: edge.type ?? props.ruleset.defaultEdgeType }, options);
 
 	if (!result.ok && (result.code === 'edge_type_not_allowed' || result.code === 'unknown_edge_type')) {

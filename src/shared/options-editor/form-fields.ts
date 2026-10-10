@@ -566,7 +566,7 @@ function nodeTypeFields(choices: ChoiceSets): FormFieldDefinition[] {
 			width: 'full',
 			group: 'group-card',
 			options: { ...MONO, placeholder: '{{title}}' },
-			note: 'The card title. Tokens: the field keys of this type, such as `{{title}}` or `{{customer.name}}`, and `{{$type}}` for the type label. Select fields show their choice text. When every token is empty the title is the label.',
+			note: 'The card title. Tokens: the field keys of this type, such as `{{title}}`, and `{{$type}}` for the type label. Select fields show their choice text, and an item reference (Collection Item Dropdown) such as `{{customer}}` shows the item\'s display text; `{{customer.key}}` gives its key. When every token is empty the title is the label.',
 		}),
 		input('summaryFields', 'Summary Fields', 'json', 'tags', {
 			width: 'full',

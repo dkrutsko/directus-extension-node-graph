@@ -2,19 +2,21 @@
  * Wording helpers for issue and connection messages. Messages name node
  * titles (or ids), type labels and port labels, never other data: the hook
  * returns them to API callers before permission checks run
- * (directus-11.17.4/api/src/services/items.ts:726-746).
+ * (directus-11.17.4/api/src/services/items.ts:726-746). The hook passes no
+ * ReferenceResolver, so a title that shows an item reference names only the
+ * stored key there, never the referenced item's data.
  */
 
 import { nodeTitle } from './labels';
-import type { CompiledRuleset, GraphNode, ResolvedPort } from './types';
+import type { CompiledRuleset, GraphNode, ReferenceResolver, ResolvedPort } from './types';
 import { truncate } from './util';
 
 const MAX_NAME_LENGTH = 60;
 
 /** `"Review access"`: a node's title in quotes. */
-export function nodeName(ruleset: CompiledRuleset | null, node: GraphNode | undefined): string {
+export function nodeName(ruleset: CompiledRuleset | null, node: GraphNode | undefined, references?: ReferenceResolver | null): string {
 	if (!node) return 'a missing node';
-	return `"${truncate(nodeTitle(ruleset, node), MAX_NAME_LENGTH)}"`;
+	return `"${truncate(nodeTitle(ruleset, node, references), MAX_NAME_LENGTH)}"`;
 }
 
 /** `output "Next"` / `input "In"`. */

@@ -65,7 +65,7 @@ const color = computed(() => {
 
 const severity = computed(() => context.edgeSeverity.value.get(edgeId.value) ?? null);
 const selected = computed(() => context.selectedEdges.value.has(edgeId.value));
-const label = computed(() => (edge.value ? edgeLabel(context.ruleset.value, edge.value) : ''));
+const label = computed(() => (edge.value ? edgeLabel(context.ruleset.value, edge.value, context.references.value?.resolve) : ''));
 
 const groupClass = computed(() => ({
 	'ng-edge--selected': selected.value,

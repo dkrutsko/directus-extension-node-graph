@@ -11,6 +11,7 @@ A node-graph field for [Directus](https://directus.io). It stores a graph of nod
 
 - **One bundle, three parts.** The **Node Graph** interface (`node-graph`), the **Node Graph Summary** display (`node-graph-summary`) and a hook (`node-graph-guard`) that validates graphs on the server.
 - **An editor in the stock drawer.** Node types in the drawer's sidebar (drag one onto the canvas or click it), the graph in the middle, and the selected node's or connection's fields in a Directus form on the right, above the list of issues. Undo and redo, zoom and fit to screen, snap to grid, an optional minimap, box selection and keyboard moves. Drawn with [Vue Flow](https://vueflow.dev).
+- **Names, not keys.** Node and connection fields can point at items of other collections with the stock Collection Item Dropdowns. Cards, connection labels, the inspector and the issues in the editor show the referenced item's display text, as the dropdown itself does. See [Item references](docs/ruleset.md#item-references).
 - **Rules as data.** A ruleset declares node types (icon, colour, palette category, fields, inputs and outputs, instance limits, deprecation), outputs generated from a repeater field, data types and which of them connect, connection types (path style, colour, dashes, label template, fields), connection rules (type checks, self loops, cycles, duplicate connections, allowed or denied pairs), graph rules (entry nodes, reachability, size limits), per-rule severities and the graph that "Create" starts from. No code, expressions or regular expressions.
 - **A ruleset editor in the field settings.** The ruleset is edited in Data Model with a form of collapsible sections, Repeaters and pickers, the way the stock Repeater's "Edit Fields" works, with live validation, examples to start from, and a JSON editor for pasting and exporting. The form never changes what it does not show.
 - **Checked while you draw.** Ports a connection may not end on are dimmed while it is drawn, and releasing on one says why. Everything that is still wrong is listed in the issues panel, errors first, and clicking an issue takes you to the element.
@@ -112,6 +113,7 @@ The stock drawer has no width option, so the editor widens it, and fits its body
 - In the Wide drawer with the palette and the inspector open, the canvas is about 730px wide, so fit to screen shows a medium-sized graph at around 40% and the card text is small. Zoom in, or use the Full width.
 - When the editor is narrower than 50rem (the Standard width, or any width on a narrow screen) the inspector and issues move under the canvas, and opening the "Node Types" section in a narrow drawer pushes the fitted graph partly out of view until you click fit.
 - Outputs generated from a repeater field are keyed by position, so reordering the repeater's items moves their connections.
+- Item references (Collection Item Dropdown fields) show names only inside the open editor, which loads the referenced items. The server's validation messages show their keys ("Start for 3"), and the field row and the display show no element text. In the editor, names appear a moment after it opens or after a pick, and items that were deleted, or that the user may not read, show their keys. Names are plain text from the display template: a date shows as stored, a relational field without a path shows its key, and displays such as thumbnails are not rendered. Labels of outputs generated from a repeater field show keys. The hook does not check that a referenced item exists.
 - Connections whose source or target node does not exist cannot be drawn. They are kept in the stored value and listed in the issues panel (`dangling_edge`), but you only see them there. If two nodes or connections share an id, only the first is drawn.
 - Pressing Escape while dragging the end of a connection to another port ends the line at once, but Vue Flow keeps that connection hidden until the mouse button is released. Escape during a drag can also leave an undo step that changes nothing.
 - Backward curved connections can loop behind the target card; the `step` path style routes around it.
@@ -120,7 +122,7 @@ The stock drawer has no width option, so the editor widens it, and fits its body
 - When the selection includes a node that cannot be deleted, the Delete key and the inspector disagree about what can be deleted.
 - Under the field, a refused save shows only the generic "Value doesn't have the correct format"; the details are in the form's error notice.
 - In the example ruleset, Event ports use the warning colour, the same orange as a port with a warning.
-- The app bundle (`dist/app.js`) is about 466 KB, 139 KB gzipped, and like every app extension it is loaded on every Data Studio page. About 67 KB of it is CSS, which the extensions SDK embeds unminified. The minimap package adds about 54 KB even when no field turns the minimap on, and the ruleset editor of the field settings about 61 KB.
+- The app bundle (`dist/app.js`) is about 473 KB, 142 KB gzipped, and like every app extension it is loaded on every Data Studio page. About 67 KB of it is CSS, which the extensions SDK embeds unminified. The minimap package adds about 54 KB even when no field turns the minimap on, and the ruleset editor of the field settings about 61 KB.
 
 ## Development
 
@@ -137,11 +139,11 @@ The code is laid out as follows:
 
 - `src/interface.ts`, `src/display.ts` and `src/hook.ts` are the three bundle entries.
 - `src/shared/core` is the framework-free rules engine: compiling rulesets, reading stored values, validation, the connection check, editor commands, templates and hashing. It runs in both the app and the API bundle, so it uses no Vue, DOM or Node APIs.
-- `src/shared/ui` is the editor shell (field row, drawer, palette, inspector, issues, history, keyboard, apply and cancel) and `theme.css`. It knows nothing about Vue Flow.
+- `src/shared/ui` is the editor shell (field row, drawer, palette, inspector, issues, history, keyboard, apply and cancel, and `references.ts`, which loads the display text of item references) and `theme.css`. It knows nothing about Vue Flow.
 - `src/canvas` is the Vue Flow canvas. It implements `src/shared/ui/canvas-contract.ts`, the only seam between the shell and the graph library.
 - `src/shared/display` and `src/shared/hook` are the display and the server-side guard, and `src/shared/options.ts` the plain interface options and their defaults.
 - `src/shared/options-editor` is the options component with the ruleset editor: `view-model.ts` converts between the stored ruleset and the form's flat rows, `form-fields.ts` declares the form's stock interfaces, and `NodeGraphOptions.vue` puts them together.
-- `tests` holds the unit tests of the core, the hook, the options and the ruleset editor's conversion, `examples` the example rulesets, and `docs` the [ruleset reference](docs/ruleset.md) and the [design spec](docs/design.md).
+- `tests` holds the unit tests of the core, the hook, the options, the ruleset editor's conversion and the requests behind item reference names, `examples` the example rulesets, and `docs` the [ruleset reference](docs/ruleset.md) and the [design spec](docs/design.md).
 
 ## Releasing
 

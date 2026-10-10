@@ -14,7 +14,7 @@
  * never changes the document itself.
  */
 
-import { computed } from 'vue';
+import { computed, inject } from 'vue';
 import {
 	edgeLabel,
 	fieldDefaults,
@@ -27,12 +27,14 @@ import {
 	type GraphEdge,
 	type GraphNode,
 	type Issue,
+	type ReferenceResolver,
 } from '../core';
 import type { Selection } from './canvas-contract';
 import { formPatch, toFormFields, type FormFieldDefinition } from './form-fields';
 import IssueList from './IssueList.vue';
 import { shortcutLabel } from './platform';
 import { useAppText } from './i18n';
+import { REFERENCE_LABELS } from './references';
 
 const props = defineProps<{
 	ruleset: CompiledRuleset;
@@ -53,6 +55,14 @@ const emit = defineEmits<{
 }>();
 
 const t = useAppText();
+
+/*
+ * Display text of item references, provided by the editor (references.ts).
+ * Reading `.value` where the text is computed re-renders it when labels
+ * arrive; without a provider references show their keys.
+ */
+const referenceLabels = inject(REFERENCE_LABELS, null);
+const references = (): ReferenceResolver | undefined => referenceLabels?.value.resolve;
 
 /* Selection --------------------------------------------------------------- */
 
@@ -107,7 +117,7 @@ function onNodeForm(values: unknown) {
 /** Raw data of a node whose type the ruleset does not know, shown read-only. */
 const unknownData = computed(() => {
 	if (!node.value || nodeType.value) return [];
-	return Object.entries(node.value.data).map(([key, value]) => ({ key, value: formatValue(value, undefined, false) }));
+	return Object.entries(node.value.data).map(([key, value]) => ({ key, value: formatValue(value, undefined, false, references()) }));
 });
 
 /* Edge -------------------------------------------------------------------- */
@@ -126,8 +136,8 @@ const edgeEndpoints = computed(() => {
 const edgeTitle = computed(() => {
 	if (!edge.value || !edgeEndpoints.value) return '';
 	const { source, target } = edgeEndpoints.value;
-	const from = source ? nodeTitle(props.ruleset, source) : edge.value.source;
-	const to = target ? nodeTitle(props.ruleset, target) : edge.value.target;
+	const from = source ? nodeTitle(props.ruleset, source, references()) : edge.value.source;
+	const to = target ? nodeTitle(props.ruleset, target, references()) : edge.value.target;
 	return `${from} → ${to}`;
 });
 
@@ -226,7 +236,9 @@ const help = computed(() => {
 	];
 });
 
-const edgeLabelText = computed(() => (edge.value ? edgeLabel(props.ruleset, edge.value) : ''));
+const edgeLabelText = computed(() => (edge.value ? edgeLabel(props.ruleset, edge.value, references()) : ''));
+
+const nodeTitleText = computed(() => (node.value ? nodeTitle(props.ruleset, node.value, references()) : ''));
 </script>
 
 <template>
@@ -244,7 +256,7 @@ const edgeLabelText = computed(() => (edge.value ? edgeLabel(props.ruleset, edge
 						<em v-if="nodeType?.deprecated">· Deprecated</em>
 					</span>
 					<span class="ng-inspector__title" :class="{ 'ng-inspector__title--mono': !nodeType }">
-						{{ nodeTitle(ruleset, node) }}
+						{{ nodeTitleText }}
 					</span>
 				</div>
 				<v-icon

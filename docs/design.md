@@ -318,7 +318,7 @@ All values are canvas px at zoom 1. W = 252.
 ### 5.4 Summary block (Flows overview)
 
 - `<dl class="ng-node__summary">` with one `<div><dt>Label</dt><dd>Value</dd></div>` per `nodeSummary()` row, padding 9px 12px. `dt`: 13px/18px, weight 600, `--theme--foreground`. `dd`: 13px/18px Fira Mono in `--theme--foreground-subdued`, one line with an ellipsis. This is `options-overview.vue:41-63` plus the global `dt`/`dd` colours (`_base.scss:121-147`, which theme.css overrides for layout).
-- `nodeSummary()` leaves out fields without a value, so a card only lists the summary fields that are filled in and its height varies with its content. An empty `dd`, should one ever render, shows `--` in `--theme--form--field--input--border-color`, exactly as `ValueNull` does (`views/private/components/value-null.vue`).
+- `nodeSummary()` leaves out fields without a value, so a card only lists the summary fields that are filled in and its height varies with its content. Item references show the referenced item's display text, which the shell loads while the editor is open (`src/shared/ui/references.ts`) and hands to the canvas as `CanvasProps.references`; until then they show their key. An empty `dd`, should one ever render, shows `--` in `--theme--form--field--input--border-color`, exactly as `ValueNull` does (`views/private/components/value-null.vue`).
 - When the card also has ports, a 2px `--theme--border-color-subdued` divider sits on top of the block (the tile footer divider), drawn as an inset shadow so it takes no space.
 - The block is left out when S = 0.
 

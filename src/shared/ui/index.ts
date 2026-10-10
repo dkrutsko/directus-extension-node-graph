@@ -30,7 +30,7 @@ import NodeGraphInterface from './NodeGraphInterface.vue';
 
 export { default as NodeGraphInterface } from './NodeGraphInterface.vue';
 export { PALETTE_DRAG_MIME } from './canvas-contract';
-export type { CanvasEmits, CanvasExpose, CanvasProps, CanvasRegistration, Selection } from './canvas-contract';
+export type { CanvasEmits, CanvasExpose, CanvasProps, CanvasRegistration, ReferenceLabels, Selection } from './canvas-contract';
 
 /**
  * The interface component for `defineInterface({ component })`: the shared

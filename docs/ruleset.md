@@ -25,6 +25,7 @@ This page describes the format, for people who write rulesets by hand and for an
 13. [Severity overrides](#severity-overrides)
 14. [Starter graph](#starter-graph)
 15. [Templates](#templates)
+   - [Item references](#item-references)
 16. [Issue codes](#issue-codes)
 17. [The stored graph document](#the-stored-graph-document)
 18. [Server-side enforcement](#server-side-enforcement)
@@ -247,7 +248,7 @@ Node types and edge types declare their fields in the Directus field shape, and 
 | `field` | key | required | Unique within the type. Not `_user` or `_date`. |
 | `name` | text | the key in title case | The form label, and the label in messages and card summaries. |
 | `type` | text | required | One of `string`, `text`, `integer`, `bigInteger`, `float`, `decimal`, `boolean`, `json`, `csv`, `uuid`, `hash`, `date`, `time`, `dateTime`, `timestamp`, or `alias` for presentation-only fields that hold no data (a notice or a divider). |
-| `meta.interface` | interface id | the form's default for the type | Any interface that works without a collection. Interfaces that need a relation or a collection-backed group are refused: `file`, `file-image`, `files`, `list-m2a`, `list-m2m`, `list-o2m`, `list-o2m-tree-view`, `select-dropdown-m2o`, `translations`, `group-accordion`, `group-detail`, `group-raw` and `group-tabs`. |
+| `meta.interface` | interface id | the form's default for the type | Any interface that works without a collection. Interfaces that need a relation or a collection-backed group are refused: `file`, `file-image`, `files`, `list-m2a`, `list-m2m`, `list-o2m`, `list-o2m-tree-view`, `select-dropdown-m2o`, `translations`, `group-accordion`, `group-detail`, `group-raw` and `group-tabs`. To point at items of another collection, use `collection-item-dropdown` or `collection-item-multiple-dropdown` (see [Item references](#item-references)). |
 | `meta.options` | object | | The interface's options, for example `choices` for selects or `fields` for a `list` repeater. |
 | `meta.width` | `half`, `half-left`, `half-right`, `full`, `fill` | `full` | Width in the inspector form. |
 | `meta.required` | boolean | `false` | An empty value raises `field_required` (error). |
@@ -258,7 +259,7 @@ Node types and edge types declare their fields in the Directus field shape, and 
 
 Validation checks only `required`: a required field is missing when its value is absent, `null`, `""` or `[]`. Hidden fields and `alias` fields are never reported. Values are not checked against the field's `type` or the interface's options (such as `min`); the inspector form enforces those while editing, but the hook does not.
 
-Selects and other interfaces with `meta.options.choices` show their choice text in titles, labels and card summaries, so a stored `team_lead` reads "Team lead".
+Selects and other interfaces with `meta.options.choices` show their choice text in titles, labels and card summaries, so a stored `team_lead` reads "Team lead". Item references show the referenced item's display text in the editor and its key elsewhere; see [Item references](#item-references).
 
 ```json
 "fields": [
@@ -508,10 +509,10 @@ Without a `starter`, "Create" seeds `limits.minInstances` nodes of every type th
 
 Titles, connection labels, dynamic output labels and the field row's summary are rendered from templates with `{{ token }}` placeholders, the syntax Directus display templates use.
 
-- A token is a path of one or more segments of letters, digits, `_`, `$` and `-`, separated by dots: `{{ title }}`, `{{ customer.name }}`, `{{ branches.0.label }}` (list items by index). Spaces just inside the braces are allowed. Anything else, such as spaces inside the path, brackets or expressions, renders empty.
+- A token is a path of one or more segments of letters, digits, `_`, `$` and `-`, separated by dots: `{{ title }}`, `{{ address.city }}` (a key inside a JSON object value), `{{ branches.0.label }}` (list items by index). Spaces just inside the braces are allowed. Anything else, such as spaces inside the path, brackets or expressions, renders empty.
 - Paths only read the value's own data. `__proto__`, `constructor` and `prototype` segments, and anything that does not exist, render empty.
 - The output is plain text, never HTML. Control characters other than tab and newline are removed.
-- Strings and numbers render as they are. When the token's first segment names a declared field, values are shown the way the form shows them: the choice text for fields with `meta.options.choices` (values compared as text) and Yes or No for booleans. Lists are joined with ", ", leaving out empty items; lists nested more than eight levels deep render empty. Objects render empty: use a path into them instead.
+- Strings and numbers render as they are. When the token's first segment names a declared field, values are shown the way the form shows them: the choice text for fields with `meta.options.choices` (values compared as text) and Yes or No for booleans. Lists are joined with ", ", leaving out empty items; lists nested more than eight levels deep render empty. Objects render empty: use a path into them instead. The exception is an [item reference](#item-references), which renders as the referenced item's display text in the editor and as its key elsewhere.
 
 ### Node titles
 
@@ -544,6 +545,28 @@ Without a template the text is "3 nodes · 2 connections", with singular words f
 
 Card summaries (`summaryFields`) are not templates: each row is the field's name over its formatted value, and empty values are left out.
 
+### Item references
+
+A node or edge field can point at an item of another collection with the stock **Collection Item Dropdown** (`collection-item-dropdown`) or **Collection Item Multiple Dropdown** (`collection-item-multiple-dropdown`) interface. Neither needs a relation, so both work in the inspector. Give the field the type `json` and the interface options `selectedCollection` (Collection, required), and optionally `template` (Display Template) and `filter`. The dropdown stores `{ "key": 3, "collection": "customers" }` and the multiple dropdown a list of those.
+
+```json
+{
+	"field": "customer",
+	"name": "Customer",
+	"type": "json",
+	"meta": { "interface": "collection-item-dropdown", "options": { "selectedCollection": "customers" } }
+}
+```
+
+A value counts as a reference when it belongs to a field with one of these two interfaces (an object with a `key`, whose `collection` defaults to the field's `selectedCollection`), or, for any field, when it is a plain object with exactly a `key` (text or a number) and a `collection` (text). Custom pickers that store the same shape are therefore treated the same way. Lists of references are joined with ", ". Other objects still render empty.
+
+- **In templates and summaries**, `{{customer}}` and a `customer` entry in `summaryFields` show the referenced item's display text, so a card reads "Start for ssh-adserver" and lists Customer "ssh-adserver". Paths still read the stored value: `{{customer.key}}` is the key and `{{customer.collection}}` the collection.
+- **The display text** comes from the field's own `template` option (Display Template, read only for the two stock interfaces), else the collection's display template, else the primary key, the same order as the stock interface. It is rendered as plain text with the template rules above, against the item's fields, so relational paths such as `{{region.name}}` work. Displays are not applied: a date shows as stored, and a relational field without a path shows its key.
+- **The editor shows names.** While the editor is open it loads the referenced items with one request per collection, asking only for the fields the templates need. It shows names on cards, connection labels, the inspector header, the issues list and issue messages. Until the items arrive, and for items that were deleted or that the user may not read, it shows the key. A collection the user cannot read is not requested at all.
+- **Everywhere else shows keys.** The server-side hook and the summary display never fetch items, so a title such as `Start for {{customer}}` reads "Start for 3" in the messages the hook returns, and in anything else that renders titles outside the editor. The field row and the display show only counts. The hook does not check that a referenced item exists.
+- A reference always counts as a filled token: where no name is known, a title whose only token is a reference shows the key rather than falling back to the type label.
+- Labels of [dynamic outputs](#dynamic-outputs) show references by their key.
+
 ## Issue codes
 
 | Code | Default | Attached to | Raised when |
@@ -575,7 +598,7 @@ Card summaries (`summaryFields`) are not templates: each row is the field's name
 
 The completeness checks and deprecation are warnings so that a freshly created or half-built graph can be saved; everything else is an error. A connection with a missing node only raises `dangling_edge`, and the ports and connection rules of a connection to or from a node of an unknown type are not checked (its edge type, required fields and self loop still are). Issues are listed errors first, then warnings, each in the order they were found.
 
-Messages name node titles (or ids), type labels and port labels, and never other field values, because the hook returns them to API clients. Examples:
+Messages name node titles (or ids), type labels and port labels, and never other field values, because the hook returns them to API clients. A title that shows an [item reference](#item-references) names it by its key in the hook's messages and by its display text in the editor. Examples:
 
 ```text
 "Approval": "Approver" is required.
