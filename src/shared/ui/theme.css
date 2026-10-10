@@ -1,0 +1,1034 @@
+/**
+ * Node graph: the Directus theme for the editor.
+ *
+ * This file is the visual half of docs/design.md. It defines the --ng-*
+ * tokens and the classes the shell and the canvas draw with (cards, handles,
+ * edges, overlays, panels). The canvas's Vue Flow specific rules live in
+ * src/canvas/directus-theme.css and only map Vue Flow's own elements onto
+ * these.
+ *
+ * Rules for this file:
+ *
+ * - Every colour, font, border width and radius comes from a Directus
+ *   --theme--* variable (directus-11.17.4/packages/themes/src/themes/light/default.ts
+ *   and dark/default.ts, injected on :root by
+ *   packages/themes/src/components/theme-provider.vue). Custom themes and
+ *   theme overrides therefore flow through automatically, in light and in
+ *   dark mode. The only colour keyword written literally is `transparent`,
+ *   used for alpha mixing (color-mix) and for invisible strokes and hit areas.
+ * - Fallbacks inside var() point at the Directus 12 names where a token was
+ *   renamed (docs/content/releases/3.breaking-changes/3.version-12.md), so a
+ *   port to 12.x only has to delete the old name here.
+ * - Every rule is scoped to one of the editor roots below. The SDK injects
+ *   this file into every Data Studio page, and a page can host several graph
+ *   fields, so nothing may match outside them.
+ * - Tokens that depend on per-element inline variables (--ng-node-color,
+ *   --ng-port-color, --ng-edge-color) are derived on the element class, not
+ *   on the root: a custom property that references another one is resolved
+ *   where it is declared.
+ * - Canvas geometry is in px (canvas units at zoom 1), not rem, so nodes stay
+ *   on the 18 px grid whatever the root font size, and the TypeScript
+ *   geometry in src/canvas/context.ts uses the same numbers. The shell
+ *   (palette, header, inspector, field row) uses Directus rem values.
+ */
+
+/* ------------------------------------------------------------------------ */
+/* 1. Tokens                                                                */
+/* ------------------------------------------------------------------------ */
+
+:is(.node-graph-editor, .node-graph-palette, .node-graph-actions, .node-graph-field, .node-graph-display) {
+	/* Base: fonts, borders, motion, focus (app/src/styles/_variables.scss:3-29, _base.scss:31-61) */
+	--ng-font-family: var(--theme--fonts--sans--font-family);
+	--ng-font-family-mono: var(--theme--fonts--monospace--font-family);
+	--ng-font-weight: var(--theme--fonts--sans--font-weight);
+	--ng-font-weight-strong: var(--theme--form--field--label--font-weight, 600);
+	--ng-foreground: var(--theme--foreground);
+	--ng-foreground-accent: var(--theme--foreground-accent);
+	--ng-foreground-subdued: var(--theme--foreground-subdued);
+	--ng-border-width: var(--theme--border-width);
+	--ng-border-radius: var(--theme--border-radius);
+	--ng-transition-fast: var(--fast, 125ms) var(--transition, ease);
+	--ng-transition-slow: var(--slow, 300ms) var(--transition, ease);
+	--ng-focus-ring-width: var(--focus-ring-width, 2px);
+	--ng-focus-ring-offset: var(--focus-ring-offset, 2px);
+	--ng-focus-ring-color: var(--focus-ring-color, var(--theme--primary));
+
+	/* Floating surfaces: the v-menu popover look (app/src/components/v-menu.vue:661-675) */
+	--ng-overlay-background: var(--theme--popover--menu--background);
+	--ng-overlay-radius: var(--theme--popover--menu--border-radius, var(--theme--border-radius));
+	--ng-overlay-shadow: var(--theme--popover--menu--box-shadow);
+
+	/* Issues: soft danger/warning like `.danger.rounded` v-buttons (v-button.vue:252-264) */
+	--ng-error-color: var(--theme--danger);
+	--ng-error-background: var(--theme--danger-background);
+	--ng-warning-color: var(--theme--warning);
+	--ng-warning-background: var(--theme--warning-background);
+	--ng-success-color: var(--theme--success);
+
+	/* Canvas: the Flows/Insights workspace (app/src/components/v-workspace.vue:175-193) */
+	--ng-canvas-background: var(--theme--background);
+	--ng-grid-dot-color: var(--theme--form--field--input--border-color, var(--theme--border-color));
+	--ng-grid-dot-radius: 1px;
+	--ng-selection-background: color-mix(in srgb, var(--theme--primary) 8%, transparent);
+	--ng-selection-border-color: var(--theme--primary);
+
+	/*
+	 * Node card geometry, in canvas units. Height of a card:
+	 *   54 + (R > 0 ? 18 + 18 * R : 0) + (S > 0 ? 18 + 36 * S : 0)
+	 * where R = max(left ports, right ports) and S = summary rows. Every value
+	 * is a multiple of 9, and the total a multiple of 18, so snapped cards sit
+	 * on the dots and port centres (72 + 18 * i) fall on grid lines.
+	 */
+	--ng-node-width: 252px;
+	--ng-node-header-height: 54px;
+	--ng-node-row: 18px;
+	--ng-node-section-padding: 9px;
+	--ng-node-padding-inline: 12px;
+	--ng-node-port-inset: 14px;
+	--ng-node-ports-offset: 72px;
+	--ng-node-summary-row: 36px;
+	--ng-node-icon-tile: 36px;
+	--ng-node-icon-size: 22px;
+	--ng-node-radius: var(--theme--border-radius);
+	--ng-node-font-size: 13px;
+	--ng-node-font-size-type: 11px;
+	--ng-node-font-size-title: 14px;
+
+	/* Node card colours: the v-workspace-tile frame (v-workspace-tile.vue:357-396) */
+	--ng-node-background: var(--theme--background);
+	--ng-node-background-placeholder: var(--theme--background-subdued);
+	--ng-node-outline-width: var(--theme--border-width);
+	--ng-node-border-color: var(--theme--form--field--input--border-color);
+	--ng-node-border-color-hover: var(--theme--form--field--input--border-color-hover);
+	--ng-node-border-color-readonly: var(--theme--border-color-subdued);
+	--ng-node-border-color-selected: var(
+		--theme--form--field--input--border-color-focus,
+		var(--theme--form--field--input--focus-ring-color, var(--theme--primary))
+	);
+	/* The Flows trigger tile's halo (flows/components/operation.vue:346-381), without the animation */
+	--ng-node-glow-selected: 0 0 0 calc(var(--theme--border-width) / 2 + 8px) color-mix(in srgb, var(--theme--primary) 20%, transparent);
+	--ng-node-border-color-error: var(--theme--danger);
+	--ng-node-divider-color: var(--theme--border-color-subdued);
+	--ng-node-foreground: var(--theme--foreground);
+	--ng-node-title-color: var(--theme--foreground-accent);
+	--ng-node-type-color: var(--theme--foreground-subdued);
+	--ng-node-color-default: var(--theme--primary);
+
+	/* Ports and handles */
+	--ng-port-color-any: var(--theme--foreground-subdued);
+	--ng-port-label-color: var(--theme--foreground);
+	--ng-handle-size: 14px;
+	--ng-handle-border-width: var(--theme--border-width);
+	--ng-handle-background: var(--theme--background);
+	--ng-handle-dot-size: 4px;
+	--ng-handle-hit-size: 24px;
+	--ng-handle-halo-width: 4px;
+	--ng-handle-valid-color: var(--theme--primary);
+	--ng-handle-invalid-color: var(--theme--danger);
+	--ng-handle-invalid-opacity: 0.35;
+
+	/* Edges: the Flows arrows (flows/components/arrows/arrows.vue:89-102, lib/generate-path.ts:60-69) */
+	--ng-edge-color-default: var(--theme--foreground-subdued);
+	--ng-edge-color-selected: var(--theme--primary);
+	--ng-edge-width: var(--theme--border-width);
+	--ng-edge-width-selected: calc(var(--theme--border-width) * 1.5);
+	--ng-edge-halo-width: 8px;
+	--ng-edge-hit-width: 16px;
+	--ng-edge-dash: 6px;
+	--ng-edge-gap: 4px;
+	--ng-edge-marker-size: 8px;
+	--ng-edge-corner-radius: 10px;
+	--ng-edge-label-background: var(--theme--background-normal);
+	--ng-edge-label-color: var(--theme--foreground);
+	--ng-edge-label-height: 18px;
+	--ng-edge-label-font-size: 11px;
+	--ng-edge-label-max-width: 160px;
+	--ng-connection-dash: 4px;
+
+	/* Minimap (docs/design.md §8.2) */
+	--ng-minimap-node: var(--theme--background-accent);
+	--ng-minimap-node-selected: var(--theme--primary);
+	--ng-minimap-mask: color-mix(in srgb, var(--theme--background-normal) 70%, transparent);
+
+	/* Shell: drawer sidebar, inspector column, field row */
+	--ng-palette-width: 12.375rem;
+	--ng-palette-background: var(--theme--navigation--background, var(--theme--shell--background, var(--theme--background-normal)));
+	--ng-inspector-width: 22rem;
+	--ng-panel-background: var(--theme--sidebar--background, var(--theme--background-normal));
+	--ng-panel-header-height: 3.375rem;
+	--ng-panel-header-background: var(--theme--sidebar--section--toggle--background, var(--theme--background-accent));
+	--ng-panel-header-foreground: var(--theme--sidebar--section--toggle--foreground, var(--theme--foreground-accent));
+	--ng-panel-header-icon: var(--theme--sidebar--section--toggle--icon--foreground, var(--theme--foreground-accent));
+	--ng-panel-header-border-width: var(--theme--sidebar--section--toggle--border-width, 0px);
+	--ng-panel-header-border-color: var(--theme--sidebar--section--toggle--border-color, transparent);
+	--ng-field-icon-tile: 2.25rem;
+}
+
+/* ------------------------------------------------------------------------ */
+/* 2. Editor root and canvas surface                                        */
+/* ------------------------------------------------------------------------ */
+
+.node-graph-editor {
+	color: var(--ng-foreground);
+	font-family: var(--ng-font-family);
+	overscroll-behavior: contain;
+}
+
+/* The element the library mounts into. Overlays position against it. */
+.node-graph-editor .ng-canvas {
+	position: relative;
+	overflow: hidden;
+	direction: ltr;
+	background-color: var(--ng-canvas-background);
+	overscroll-behavior: contain;
+	touch-action: none;
+	user-select: none;
+}
+
+/*
+ * The dotted grid of the Flows/Insights edit mode (v-workspace.vue:175-193),
+ * drawn by CSS rather than @vue-flow/background so it matches Flows exactly.
+ * The canvas sets --ng-viewport-x / --ng-viewport-y (px, screen offset of
+ * canvas point 0,0), --ng-viewport-zoom (number) and --ng-grid-size (px) on
+ * this element itself, not on .ng-canvas (VueFlowCanvas.vue says why). Dots
+ * sit on multiples of the grid size, where snapped card corners land.
+ */
+.node-graph-editor .ng-grid {
+	--ng-grid-step: calc(var(--ng-grid-size, 18px) * var(--ng-viewport-zoom, 1));
+	/*
+	 * The dot scales with the canvas, like the cards: the stock workspace
+	 * draws its dots on `.workspace::before`, inside the element it scales
+	 * (directus-11.17.4/app/src/components/v-workspace.vue:155-193). A fixed
+	 * 1px dot all but vanished at 200% and turned into a busy texture when
+	 * zoomed out. Any canvas that sets --ng-viewport-zoom gets this for free.
+	 */
+	--ng-grid-dot-current: calc(var(--ng-grid-dot-radius) * var(--ng-viewport-zoom, 1));
+
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	background-image: radial-gradient(
+		circle at center,
+		var(--ng-grid-dot-color) var(--ng-grid-dot-current),
+		transparent calc(var(--ng-grid-dot-current) + 0.5px)
+	);
+	background-position:
+		calc(var(--ng-viewport-x, 0px) - var(--ng-grid-step) / 2)
+		calc(var(--ng-viewport-y, 0px) - var(--ng-grid-step) / 2);
+	background-size: var(--ng-grid-step) var(--ng-grid-step);
+	opacity: 1;
+	transition: opacity var(--ng-transition-slow);
+	pointer-events: none;
+}
+
+/* Like Flows: the dots only show in edit mode. The canvas adds --hidden when the step drops below 9px. */
+.node-graph-editor--readonly .ng-grid,
+.node-graph-editor .ng-grid--hidden {
+	opacity: 0;
+}
+
+/* Zoom readout, styled like the tile's .resize-details (v-workspace-tile.vue:408-431) */
+.node-graph-editor .ng-canvas-status {
+	position: absolute;
+	inset-block-end: 0.6875rem;
+	inset-inline-start: 0.6875rem;
+	z-index: 5;
+	padding: 0.125rem 0.375rem;
+	color: var(--ng-foreground-subdued);
+	font-weight: 500;
+	font-size: 0.6875rem;
+	font-family: var(--ng-font-family-mono);
+	line-height: 1.4;
+	background-color: var(--ng-canvas-background);
+	border-radius: var(--ng-border-radius);
+	pointer-events: none;
+}
+
+/* A floating v-notice (connect rejected, remote change) */
+.node-graph-editor .ng-canvas-toast {
+	position: absolute;
+	inset-inline-start: 50%;
+	z-index: 6;
+	inline-size: max-content;
+	max-inline-size: min(30rem, calc(100% - 2.75rem));
+	border-radius: var(--ng-border-radius);
+	box-shadow: var(--ng-overlay-shadow);
+	transform: translateX(-50%);
+}
+
+/* Above the status readout (bottom 0.6875rem, about 1.25rem tall), so the two never overlap */
+.node-graph-editor .ng-canvas-toast--bottom {
+	inset-block-end: 2.5rem;
+}
+
+.node-graph-editor .ng-canvas-toast--top {
+	inset-block-start: 0.6875rem;
+}
+
+/* v-info empty state; drops and pans still reach the canvas underneath */
+.node-graph-editor .ng-canvas-empty {
+	position: absolute;
+	inset: 0;
+	z-index: 4;
+	display: grid;
+	place-items: center;
+	padding: var(--content-padding, 1.375rem);
+	pointer-events: none;
+}
+
+/* Until the canvas emits `ready` */
+.node-graph-editor .ng-canvas-loading {
+	position: absolute;
+	inset: 0;
+	z-index: 7;
+	display: grid;
+	place-items: center;
+	background-color: var(--ng-canvas-background);
+}
+
+/* ------------------------------------------------------------------------ */
+/* 3. Node card                                                             */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * The frame copies v-workspace-tile: half the border width inside and half
+ * outside (v-workspace-tile.vue:368-369), drawn with box-shadow so it takes
+ * no layout space and the card is exactly --ng-node-width wide. That is the
+ * same as a 2px SVG stroke centred on the edge.
+ */
+.node-graph-editor .ng-node {
+	--ng-node-accent: var(--ng-node-color, var(--ng-node-color-default));
+	--ng-node-icon-background: color-mix(in srgb, var(--ng-node-background), var(--ng-node-accent) 10%);
+	--ng-node-current-border: var(--ng-node-border-color);
+	--ng-node-current-glow: 0 0 0 0 var(--ng-node-current-border);
+
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	inline-size: var(--ng-node-width);
+	margin: 0;
+	color: var(--ng-node-foreground);
+	font-weight: var(--ng-font-weight);
+	font-size: var(--ng-node-font-size);
+	font-family: var(--ng-font-family);
+	line-height: var(--ng-node-row);
+	text-align: start;
+	background-color: var(--ng-node-background);
+	border-radius: var(--ng-node-radius);
+	box-shadow:
+		inset 0 0 0 calc(var(--ng-node-outline-width) / 2) var(--ng-node-current-border),
+		0 0 0 calc(var(--ng-node-outline-width) / 2) var(--ng-node-current-border),
+		var(--ng-node-current-glow);
+	cursor: move;
+	user-select: none;
+	transition:
+		box-shadow var(--ng-transition-fast),
+		background-color var(--ng-transition-fast);
+}
+
+.node-graph-editor .ng-node:hover {
+	--ng-node-current-border: var(--ng-node-border-color-hover);
+}
+
+/* Read-only: the Flows view-mode frame; cards are still selectable */
+.node-graph-editor--readonly .ng-node {
+	--ng-node-current-border: var(--ng-node-border-color-readonly);
+
+	cursor: pointer;
+}
+
+.node-graph-editor .ng-node.ng-node--error {
+	--ng-node-current-border: var(--ng-node-border-color-error);
+}
+
+.node-graph-editor .ng-node.ng-node--selected,
+.node-graph-editor .ng-node.ng-node--dragging {
+	--ng-node-current-border: var(--ng-node-border-color-selected);
+	--ng-node-current-glow: var(--ng-node-glow-selected);
+}
+
+/* Deprecated and placeholder cards use a dashed frame (like v-list-item.dashed, v-list-item.vue:200-213) */
+.node-graph-editor .ng-node.ng-node--deprecated,
+.node-graph-editor .ng-node.ng-node--placeholder {
+	box-shadow: var(--ng-node-current-glow);
+	outline: var(--ng-node-outline-width) dashed var(--ng-node-current-border);
+	outline-offset: calc(var(--ng-node-outline-width) / -2);
+}
+
+.node-graph-editor .ng-node.ng-node--deprecated:not(.ng-node--error, .ng-node--selected, .ng-node--dragging) {
+	--ng-node-current-border: var(--ng-node-border-color-hover);
+}
+
+.node-graph-editor .ng-node.ng-node--placeholder {
+	background-color: var(--ng-node-background-placeholder);
+}
+
+.node-graph-editor .ng-node.ng-node--placeholder:not(.ng-node--selected, .ng-node--dragging) {
+	--ng-node-current-border: var(--ng-node-border-color-error);
+}
+
+/*
+ * Keyboard focus: the Directus default ring (_base.scss:44-50), outside the
+ * frame. Vue Flow focuses its own wrapper around the card, so the ring is
+ * also drawn when the card's direct parent has focus, and that wrapper's own
+ * outline (the dotted div ring from _base.scss:52-61) is removed.
+ */
+.node-graph-editor .ng-node:focus-visible,
+.node-graph-editor :focus-visible > .ng-node {
+	outline: var(--ng-focus-ring-width) solid var(--ng-focus-ring-color);
+	outline-offset: calc(var(--ng-node-outline-width) / 2 + var(--ng-focus-ring-offset));
+}
+
+.node-graph-editor :focus-visible:has(> .ng-node) {
+	outline: none;
+}
+
+/* Header: icon tile, type headline, title, badges. Exactly 54px (3 grid units). */
+.node-graph-editor .ng-node__header {
+	box-sizing: border-box;
+	display: flex;
+	flex: none;
+	gap: var(--ng-node-section-padding);
+	align-items: center;
+	block-size: var(--ng-node-header-height);
+	padding-block: var(--ng-node-section-padding);
+	padding-inline: var(--ng-node-section-padding) var(--ng-node-padding-inline);
+}
+
+/* The icon tile: the file interface preview (interfaces/file/file.vue:425-447) in the node-type colour */
+.node-graph-editor .ng-node__icon {
+	--v-icon-size: var(--ng-node-icon-size);
+	--v-icon-color: var(--ng-node-accent);
+
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--ng-node-icon-tile);
+	block-size: var(--ng-node-icon-tile);
+	color: var(--ng-node-accent);
+	background-color: var(--ng-node-icon-background);
+	border-radius: var(--ng-node-radius);
+}
+
+.node-graph-editor .ng-node--deprecated .ng-node__icon {
+	--v-icon-color: var(--ng-foreground-subdued);
+
+	color: var(--ng-foreground-subdued);
+	background-color: var(--theme--background-normal);
+}
+
+.node-graph-editor .ng-node--placeholder .ng-node__icon {
+	--v-icon-color: var(--ng-error-color);
+
+	color: var(--ng-error-color);
+	background-color: var(--ng-error-background);
+}
+
+/* Headline over title, like the drawer header (v-drawer-header.vue:146-154) */
+.node-graph-editor .ng-node__heading {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.node-graph-editor .ng-node__type,
+.node-graph-editor .ng-node__title {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.node-graph-editor .ng-node__type {
+	color: var(--ng-node-type-color);
+	font-weight: var(--ng-font-weight-strong);
+	font-size: var(--ng-node-font-size-type);
+	line-height: 16px;
+}
+
+.node-graph-editor .ng-node__title {
+	color: var(--ng-node-title-color);
+	font-weight: var(--ng-font-weight-strong);
+	font-size: var(--ng-node-font-size-title);
+	line-height: 20px;
+}
+
+.node-graph-editor .ng-node--placeholder .ng-node__title {
+	font-family: var(--ng-font-family-mono);
+}
+
+/* Deprecated types say so in the headline ("Legacy review · Deprecated"), not with an extra chip */
+.node-graph-editor .ng-node__type-suffix {
+	font-style: italic;
+}
+
+.node-graph-editor .ng-node__badges {
+	display: flex;
+	flex: none;
+	gap: 4px;
+	align-items: center;
+}
+
+/* Ports: inputs left, outputs right, one 18px row per port, 9px padding above and below */
+.node-graph-editor .ng-node__ports {
+	box-sizing: border-box;
+	display: grid;
+	flex: none;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	column-gap: var(--ng-node-padding-inline);
+	padding-block: var(--ng-node-section-padding);
+	padding-inline: var(--ng-node-port-inset);
+}
+
+.node-graph-editor .ng-node__inputs,
+.node-graph-editor .ng-node__outputs {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.node-graph-editor .ng-node__inputs {
+	grid-column: 1;
+	text-align: left;
+}
+
+.node-graph-editor .ng-node__outputs {
+	grid-column: 2;
+	text-align: right;
+}
+
+.node-graph-editor .ng-port-label {
+	display: block;
+	block-size: var(--ng-node-row);
+	overflow: hidden;
+	color: var(--ng-port-label-color);
+	font-size: var(--ng-node-font-size);
+	line-height: var(--ng-node-row);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.node-graph-editor .ng-port-label--undeclared {
+	color: var(--ng-error-color);
+	font-style: italic;
+}
+
+/* Summary: the Flows overview <dl> (flows/components/options-overview.vue:41-63), 36px per row */
+.node-graph-editor .ng-node__summary {
+	box-sizing: border-box;
+	flex: none;
+	margin: 0;
+	padding-block: var(--ng-node-section-padding);
+	padding-inline: var(--ng-node-padding-inline);
+}
+
+/* The tile footer divider (v-workspace-tile.vue:452-457), only between ports and summary */
+.node-graph-editor .ng-node__ports + .ng-node__summary {
+	box-shadow: inset 0 var(--ng-border-width) 0 var(--ng-node-divider-color);
+}
+
+/* Override the global dl/dt/dd rules (_base.scss:121-147) */
+.node-graph-editor .ng-node__summary > div {
+	display: block;
+	margin: 0;
+}
+
+.node-graph-editor .ng-node__summary dt,
+.node-graph-editor .ng-node__summary dd {
+	display: block;
+	margin: 0;
+	overflow: hidden;
+	font-size: var(--ng-node-font-size);
+	line-height: var(--ng-node-row);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.node-graph-editor .ng-node__summary dt {
+	color: var(--ng-node-foreground);
+	font-weight: var(--ng-font-weight-strong);
+}
+
+.node-graph-editor .ng-node__summary dd {
+	color: var(--ng-foreground-subdued);
+	font-family: var(--ng-font-family-mono);
+}
+
+/* Empty value: the "--" of ValueNull, in the same colour (views/private/components/value-null.vue:1-9) */
+.node-graph-editor .ng-node__summary dd:empty::before {
+	color: var(--theme--form--field--input--border-color);
+	content: '--';
+}
+
+/* Error / warning count on a card: the x-small v-chip (v-chip.vue:148-153) in canvas px, with soft colours */
+.node-graph-editor .ng-badge {
+	--v-icon-size: 12px;
+	--v-icon-color: currentColor;
+
+	box-sizing: border-box;
+	display: inline-flex;
+	gap: 2px;
+	align-items: center;
+	block-size: 18px;
+	padding: 0 5px;
+	font-weight: var(--ng-font-weight-strong);
+	font-size: 11px;
+	line-height: 18px;
+	white-space: nowrap;
+	border-radius: 9px;
+}
+
+.node-graph-editor .ng-badge--error {
+	color: var(--ng-error-color);
+	background-color: var(--ng-error-background);
+}
+
+.node-graph-editor .ng-badge--warning {
+	color: var(--ng-warning-color);
+	background-color: var(--ng-warning-background);
+}
+
+/* ------------------------------------------------------------------------ */
+/* 4. Handles                                                               */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * A 14px ring in the port's data-type colour, centred on the card edge.
+ * Connected ports show a 4px dot inside, the ring-gap-dot look of the Flows
+ * "adjust" attachment handle (flows/components/operation.vue:248-258),
+ * scaled from 18px to 14px so ports fit one per 18px row.
+ *
+ * State is expressed through custom properties, so every modifier class
+ * below only sets variables and the one drawing rule follows them:
+ *   --ng-handle-ring   ring colour         --ng-handle-dot      0 | 1
+ *   --ng-handle-fill   inner background    --ng-handle-halo     0 | 1
+ *   --ng-handle-halo-color                 --ng-handle-opacity
+ */
+.node-graph-editor .ng-handle {
+	--ng-handle-ring: var(--ng-port-color, var(--ng-port-color-any));
+	--ng-handle-fill: var(--ng-handle-background);
+	--ng-handle-dot: 0;
+	--ng-handle-halo: 0;
+	--ng-handle-halo-color: color-mix(in srgb, var(--ng-handle-ring) 25%, transparent);
+	--ng-handle-opacity: 1;
+
+	opacity: var(--ng-handle-opacity);
+	cursor: crosshair;
+}
+
+/* Vue Flow positions the handle (absolute, centred on the edge); this only draws it. */
+.node-graph-editor .ng-handle {
+	box-sizing: border-box;
+	inline-size: var(--ng-handle-size);
+	min-inline-size: 0;
+	block-size: var(--ng-handle-size);
+	min-block-size: 0;
+	padding: 0;
+	background-color: var(--ng-handle-fill);
+	background-image: radial-gradient(
+		circle at center,
+		var(--ng-handle-ring) calc(var(--ng-handle-dot) * var(--ng-handle-dot-size) / 2),
+		transparent calc(var(--ng-handle-dot) * (var(--ng-handle-dot-size) / 2 + 0.5px))
+	);
+	border: var(--ng-handle-border-width) solid var(--ng-handle-ring);
+	border-radius: 50%;
+	box-shadow: 0 0 0 calc(var(--ng-handle-halo) * var(--ng-handle-halo-width)) var(--ng-handle-halo-color);
+	transition:
+		box-shadow var(--ng-transition-fast),
+		border-color var(--ng-transition-fast),
+		background-color var(--ng-transition-fast),
+		opacity var(--ng-transition-fast);
+}
+
+/* A 24px hit target around the 14px ring. Needs the handle to be positioned, which Vue Flow does. */
+.node-graph-editor .ng-handle::before {
+	position: absolute;
+	inset: calc(-1 * (var(--ng-handle-border-width) + (var(--ng-handle-hit-size) - var(--ng-handle-size)) / 2));
+	border-radius: 50%;
+	content: '';
+}
+
+.node-graph-editor .ng-handle.ng-handle--connected {
+	--ng-handle-dot: 1;
+}
+
+.node-graph-editor:not(.node-graph-editor--readonly) .ng-handle:hover,
+.node-graph-editor .ng-handle.ng-handle--source {
+	--ng-handle-halo: 1;
+}
+
+/*
+ * A port named by an issue: the ring takes the issue's colour, like the
+ * card's badge. min_connections is a warning by default, so an unconnected
+ * input on a fresh starter graph is orange, not red. The canvas adds
+ * ng-handle--warning for warning-severity port issues and ng-handle--error
+ * for errors; error comes second so it wins when a port has both.
+ */
+.node-graph-editor .ng-handle.ng-handle--warning {
+	--ng-handle-ring: var(--ng-warning-color);
+}
+
+.node-graph-editor .ng-handle.ng-handle--error {
+	--ng-handle-ring: var(--ng-error-color);
+}
+
+/* While a connection is drawn: compatible handles get a primary halo, the rest dim */
+.node-graph-editor .ng-handle.ng-handle--valid-target {
+	--ng-handle-halo: 1;
+	--ng-handle-halo-color: color-mix(in srgb, var(--ng-handle-valid-color) 25%, transparent);
+}
+
+.node-graph-editor .ng-handle.ng-handle--invalid-target {
+	--ng-handle-opacity: var(--ng-handle-invalid-opacity);
+}
+
+/* The handle under the pointer */
+.node-graph-editor .ng-handle.ng-handle--target.ng-handle--valid-target {
+	--ng-handle-ring: var(--ng-handle-valid-color);
+	--ng-handle-dot: 1;
+}
+
+.node-graph-editor .ng-handle.ng-handle--target.ng-handle--invalid-target {
+	--ng-handle-ring: var(--ng-handle-invalid-color);
+	--ng-handle-fill: var(--ng-error-background);
+	--ng-handle-halo: 1;
+	--ng-handle-halo-color: color-mix(in srgb, var(--ng-handle-invalid-color) 25%, transparent);
+	--ng-handle-opacity: 1;
+
+	cursor: not-allowed;
+}
+
+/* Placeholder port that an edge references but the node does not declare */
+.node-graph-editor .ng-handle.ng-handle--undeclared {
+	border-style: dashed;
+}
+
+/* Read-only: like Flows view mode, only connected handles are shown (operation.vue:208, 228) */
+.node-graph-editor--readonly .ng-handle {
+	cursor: default;
+}
+
+.node-graph-editor--readonly .ng-handle:not(.ng-handle--connected) {
+	visibility: hidden;
+}
+
+/* ------------------------------------------------------------------------ */
+/* 5. Edges (SVG)                                                           */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * <g class="ng-edge"> containing, in paint order:
+ *   path.ng-edge__halo    hover/selection halo
+ *   path.ng-edge__path    the visible line
+ *   path.ng-edge__marker  open chevron at the target (two 8px arms, like Flows)
+ *   path.ng-edge__hit     wide transparent pointer target
+ * Vue Flow draws edges inside the zoomed viewport, so widths, dashes and
+ * the chevron scale with the cards.
+ */
+.node-graph-editor .ng-edge {
+	--ng-edge-current: var(--ng-edge-color, var(--ng-edge-color-default));
+	--ng-edge-current-width: var(--ng-edge-width);
+	--ng-edge-current-halo: transparent;
+	--ng-edge-hover-halo: color-mix(in srgb, var(--ng-edge-current) 20%, transparent);
+}
+
+.node-graph-editor .ng-edge__path,
+.node-graph-editor .ng-edge__marker {
+	fill: none;
+	stroke: var(--ng-edge-current);
+	stroke-width: var(--ng-edge-current-width);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	transition:
+		stroke var(--ng-transition-fast),
+		stroke-width var(--ng-transition-fast);
+}
+
+.node-graph-editor .ng-edge__halo {
+	fill: none;
+	stroke: var(--ng-edge-current-halo);
+	stroke-width: var(--ng-edge-halo-width);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	transition: stroke var(--ng-transition-fast);
+}
+
+.node-graph-editor .ng-edge__hit {
+	fill: none;
+	stroke: transparent;
+	stroke-width: var(--ng-edge-hit-width);
+	cursor: pointer;
+	pointer-events: stroke;
+}
+
+.node-graph-editor .ng-edge:hover {
+	--ng-edge-current-halo: var(--ng-edge-hover-halo);
+}
+
+.node-graph-editor .ng-edge.ng-edge--warning {
+	--ng-edge-current: var(--ng-warning-color);
+}
+
+.node-graph-editor .ng-edge.ng-edge--error {
+	--ng-edge-current: var(--ng-error-color);
+}
+
+.node-graph-editor .ng-edge.ng-edge--selected {
+	--ng-edge-current: var(--ng-edge-color-selected);
+	--ng-edge-current-width: var(--ng-edge-width-selected);
+	--ng-edge-current-halo: color-mix(in srgb, var(--ng-edge-color-selected) 25%, transparent);
+}
+
+/* Keyboard focus on an edge (Vue Flow edges are focusable): the halo in the focus ring colour */
+.node-graph-editor :focus-visible > .ng-edge,
+.node-graph-editor .ng-edge:focus-visible {
+	--ng-edge-current-halo: color-mix(in srgb, var(--ng-focus-ring-color) 40%, transparent);
+}
+
+.node-graph-editor :focus-visible:has(> .ng-edge) {
+	outline: none;
+}
+
+.node-graph-editor .ng-edge--dashed .ng-edge__path,
+.node-graph-editor .ng-edge--animated .ng-edge__path {
+	stroke-dasharray: var(--ng-edge-dash) var(--ng-edge-gap);
+}
+
+.node-graph-editor .ng-edge--animated .ng-edge__path {
+	animation: ng-edge-flow 0.6s linear infinite;
+}
+
+@keyframes ng-edge-flow {
+	from {
+		stroke-dashoffset: 10px;
+	}
+
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+/* Edge label: an x-small v-chip pill (v-chip.vue:110-153), rendered through Vue Flow's EdgeLabelRenderer */
+.node-graph-editor .ng-edge-label {
+	box-sizing: border-box;
+	display: inline-block;
+	block-size: var(--ng-edge-label-height);
+	max-inline-size: var(--ng-edge-label-max-width);
+	padding: 0 6px;
+	overflow: hidden;
+	color: var(--ng-edge-label-color);
+	font-weight: 500;
+	font-size: var(--ng-edge-label-font-size);
+	font-family: var(--ng-font-family);
+	line-height: var(--ng-edge-label-height);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	background-color: var(--ng-edge-label-background);
+	border-radius: calc(var(--ng-edge-label-height) / 2);
+	cursor: pointer;
+	user-select: none;
+	pointer-events: all;
+	transition:
+		color var(--ng-transition-fast),
+		background-color var(--ng-transition-fast);
+}
+
+.node-graph-editor .ng-edge-label.ng-edge-label--warning {
+	--ng-edge-label-color: var(--ng-warning-color);
+	--ng-edge-label-background: var(--ng-warning-background);
+}
+
+.node-graph-editor .ng-edge-label.ng-edge-label--error {
+	--ng-edge-label-color: var(--ng-error-color);
+	--ng-edge-label-background: var(--ng-error-background);
+}
+
+.node-graph-editor .ng-edge-label.ng-edge-label--selected {
+	--ng-edge-label-color: var(--theme--primary);
+	--ng-edge-label-background: var(--theme--primary-background);
+}
+
+/* The line drawn while connecting: source colour, dashed until it snaps to a valid target */
+.node-graph-editor .ng-connection {
+	fill: none;
+	stroke: var(--ng-connection-color, var(--theme--primary));
+	stroke-width: var(--ng-edge-width);
+	stroke-dasharray: var(--ng-connection-dash);
+	stroke-linecap: round;
+	pointer-events: none;
+}
+
+.node-graph-editor .ng-connection.ng-connection--valid {
+	stroke-dasharray: none;
+}
+
+.node-graph-editor .ng-connection.ng-connection--invalid {
+	stroke: var(--ng-error-color);
+}
+
+/* ------------------------------------------------------------------------ */
+/* 6. Minimap                                                               */
+/* ------------------------------------------------------------------------ */
+
+/* A popover-style card (v-menu.vue:661-675). Position: bottom-right of the canvas, 0.6875rem in. */
+.node-graph-editor .ng-minimap {
+	overflow: hidden;
+	background-color: var(--ng-overlay-background);
+	border-radius: var(--ng-overlay-radius);
+	box-shadow: var(--ng-overlay-shadow);
+}
+
+.node-graph-editor .ng-minimap__node {
+	fill: var(--ng-minimap-node);
+	stroke: none;
+}
+
+.node-graph-editor .ng-minimap__node--selected {
+	fill: var(--ng-minimap-node-selected);
+}
+
+/* ------------------------------------------------------------------------ */
+/* 7. Shell helpers                                                         */
+/* ------------------------------------------------------------------------ */
+
+/* Inspector and issues column: the item-page sidebar (views/private/private-view/components/private-view-sidebar.vue:30-35) */
+.node-graph-editor .ng-panel {
+	color: var(--ng-foreground);
+	background-color: var(--ng-panel-background);
+}
+
+/* Section header: the sidebar-detail accordion trigger (views/private/components/sidebar-detail.vue:66-89) */
+.node-graph-editor .ng-panel-header {
+	--v-icon-color: var(--ng-panel-header-icon);
+
+	box-sizing: border-box;
+	display: flex;
+	flex: none;
+	gap: 0.6875rem;
+	align-items: center;
+	block-size: var(--ng-panel-header-height);
+	padding-inline: 1rem 0.5rem;
+	color: var(--ng-panel-header-foreground);
+	font-family: var(--theme--sidebar--section--toggle--font-family, var(--ng-font-family));
+	background-color: var(--ng-panel-header-background);
+	border-block-end: var(--ng-panel-header-border-width) solid var(--ng-panel-header-border-color);
+}
+
+.node-graph-editor .ng-panel-header__title {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+/* Section body: sidebar-detail content padding (sidebar-detail.vue:148-150), with a form rhythm that fits 22rem */
+.node-graph-editor .ng-panel-body {
+	--theme--form--row-gap: 1.375rem;
+	--theme--form--column-gap: 0.875rem;
+
+	padding: 0.875rem 1rem;
+}
+
+/* Error / warning counts in the field row and panel headers: the small v-chip (v-chip.vue:155-160), soft colours */
+:is(.node-graph-editor, .node-graph-actions, .node-graph-field, .node-graph-display) .ng-issue-chip {
+	--v-icon-size: 1rem;
+	--v-icon-color: currentColor;
+
+	box-sizing: border-box;
+	display: inline-flex;
+	flex: none;
+	gap: 0.125rem;
+	align-items: center;
+	block-size: 1.375rem;
+	padding-inline: 0.3125rem 0.4375rem;
+	font-weight: var(--ng-font-weight-strong);
+	font-size: 0.75rem;
+	line-height: 1;
+	white-space: nowrap;
+	border-radius: 0.6875rem;
+}
+
+:is(.node-graph-editor, .node-graph-actions, .node-graph-field, .node-graph-display) .ng-issue-chip--error {
+	color: var(--ng-error-color);
+	background-color: var(--ng-error-background);
+}
+
+:is(.node-graph-editor, .node-graph-actions, .node-graph-field, .node-graph-display) .ng-issue-chip--warning {
+	color: var(--ng-warning-color);
+	background-color: var(--ng-warning-background);
+}
+
+/* Field row icon tile: the file interface preview (interfaces/file/file.vue:425-447) */
+.node-graph-field .ng-field-icon {
+	--v-icon-color: var(--theme--form--field--input--foreground-subdued);
+
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--ng-field-icon-tile);
+	block-size: var(--ng-field-icon-tile);
+	margin-inline-start: -0.4375rem;
+	background-color: var(--theme--background-normal);
+	border-radius: var(--ng-border-radius);
+}
+
+.node-graph-field .ng-field-icon--filled {
+	--v-icon-color: var(--theme--primary);
+
+	background-color: var(--theme--primary-background);
+}
+
+.node-graph-field .ng-field-icon--warning {
+	--v-icon-color: var(--ng-warning-color);
+
+	background-color: var(--ng-warning-background);
+}
+
+/*
+ * Type icons without a colour of their own use the navigation icon colour
+ * (primary by default), as in the drawer sidebar, where v-drawer.vue:203-214
+ * sets it. Below 54rem the stock drawer renders the
+ * palette again in a VDetail above the body that does not set it, so those
+ * icons fell back to the subdued list colour and looked disabled next to the
+ * coloured ones. Disabled items keep their subdued icon (v-list-item-icon.vue:69).
+ */
+.node-graph-palette {
+	--v-list-item-icon-color: var(--theme--navigation--list--icon--foreground, var(--theme--primary));
+}
+
+/* Palette: draggable navigation items and the sticky search of the content navigation (modules/content/components/navigation.vue:142-151) */
+.node-graph-palette .ng-palette-item:not(.disabled) {
+	cursor: grab;
+}
+
+.node-graph-palette .ng-palette-item:not(.disabled):active {
+	cursor: grabbing;
+}
+
+.node-graph-palette .ng-palette-search {
+	--theme--form--field--input--height: 2.25rem;
+
+	position: sticky;
+	inset-block-start: 0;
+	z-index: 1;
+	padding: 0.6875rem;
+	padding-block-end: 0;
+	background-color: var(--ng-palette-background);
+}
+
+/* ------------------------------------------------------------------------ */
+/* 8. Reduced motion                                                        */
+/* ------------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+	.node-graph-editor .ng-edge--animated .ng-edge__path {
+		animation: none;
+	}
+
+	.node-graph-editor :is(.ng-node, .ng-handle, .ng-grid, .ng-edge__path, .ng-edge__marker, .ng-edge__halo, .ng-edge-label) {
+		transition: none;
+	}
+}

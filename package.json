@@ -1,0 +1,95 @@
+{
+  "name": "directus-extension-node-graph",
+  "description": "Node-graph field for Directus: edit a graph of nodes and connections against a configurable ruleset, with a summary display and server-side validation",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": {
+    "name": "David Krutsko",
+    "email": "dave@krutsko.net",
+    "url": "https://krutsko.net"
+  },
+  "homepage": "https://github.com/dkrutsko/directus-extension-node-graph#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dkrutsko/directus-extension-node-graph.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dkrutsko/directus-extension-node-graph/issues"
+  },
+  "icon": "account_tree",
+  "keywords": [
+    "directus",
+    "directus-extension",
+    "directus-extension-bundle",
+    "node-graph",
+    "node-editor",
+    "graph-editor",
+    "flow",
+    "workflow",
+    "diagram",
+    "vue-flow"
+  ],
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "directus:extension": {
+    "type": "bundle",
+    "path": {
+      "app": "dist/app.js",
+      "api": "dist/api.js"
+    },
+    "entries": [
+      {
+        "type": "interface",
+        "name": "node-graph",
+        "source": "src/interface.ts"
+      },
+      {
+        "type": "display",
+        "name": "node-graph-summary",
+        "source": "src/display.ts"
+      },
+      {
+        "type": "hook",
+        "name": "node-graph-guard",
+        "source": "src/hook.ts"
+      }
+    ],
+    "host": "^11.15.0",
+    "partial": false
+  },
+  "scripts": {
+    "build": "directus-extension build",
+    "dev": "directus-extension build -w --no-minify",
+    "link": "directus-extension link",
+    "validate": "directus-extension validate",
+    "check": "vue-tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "prepublishOnly": "npm run check && npm test && npm run build && npm run validate"
+  },
+  "engines": {
+    "node": ">= 22.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "devDependencies": {
+    "@directus/errors": "2.3.1",
+    "@directus/extensions-sdk": "17.1.4",
+    "@directus/tsconfig": "^4.0",
+    "@directus/types": "15.0.3",
+    "@types/node": "^22.20.5",
+    "@vue-flow/core": "1.48.2",
+    "@vue-flow/minimap": "1.5.4",
+    "knex": "3.1.0",
+    "typescript": "^5.9.3",
+    "vitest": "3.2.4",
+    "vue": "^3.5.24",
+    "vue-tsc": "^3.2"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
+  }
+}

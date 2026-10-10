@@ -1,0 +1,177 @@
+/**
+ * Directus theme for @vue-flow/core 1.48.2 (docs/design.md §13.1).
+ *
+ * The canvas imports only @vue-flow/core/dist/style.css, which is structural
+ * (positions, layers, pointer events), plus a handful of hard-coded colours
+ * that the rules below replace. theme-default.css is never imported: it puts
+ * light-only --vf-* variables on :root, blue selection boxes and 6px #555
+ * handles. Cards, handles, edges and labels are drawn with the shared ng-*
+ * classes from src/shared/ui/theme.css (imported once by the shell), so this
+ * file only maps Vue Flow's own elements onto them.
+ *
+ * Every selector starts at .node-graph-editor .ng-vueflow, the canvas root
+ * inside the editor body, so nothing here can match outside an open editor
+ * (a page may host several graph fields, and another extension may render
+ * its own Vue Flow canvas with its own styles).
+ */
+
+/* ------------------------------------------------------------------------ */
+/* Flow container                                                           */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Another extension on the same page may import theme-default.css globally.
+ * Pin the variables it would set to Directus tokens anyway, and keep the
+ * flow transparent so the .ng-grid layer underneath shows through.
+ */
+.node-graph-editor .ng-vueflow .vue-flow {
+	--vf-node-bg: var(--ng-node-background);
+	--vf-node-text: var(--ng-node-foreground);
+	--vf-connection-path: var(--ng-edge-color-default);
+	--vf-handle: var(--ng-port-color-any);
+	--vf-node-color: var(--ng-node-border-color);
+	--vf-box-shadow: var(--ng-node-border-color-selected);
+
+	color: var(--ng-foreground);
+	font-family: var(--ng-font-family);
+	background: transparent;
+}
+
+/* While a connection is drawn the empty pane shows the handle cursor, as the handles do. */
+.node-graph-editor .ng-vueflow.ng-vueflow--drawing .vue-flow__pane {
+	cursor: crosshair;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Nodes                                                                    */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * The node wrapper Vue Flow positions (style.css:140-158). Every node uses
+ * the one custom type 'ng-node', so the card is .ng-node inside it and the
+ * wrapper itself stays invisible: no padding, border, background or shadow,
+ * whatever another stylesheet says about .vue-flow__node.
+ */
+.node-graph-editor .ng-vueflow .vue-flow__node-ng-node {
+	inline-size: auto;
+	padding: 0;
+	color: inherit;
+	font-size: inherit;
+	text-align: start;
+	background: transparent;
+	border: 0;
+	border-radius: var(--ng-node-radius);
+	box-shadow: none;
+}
+
+/* The card sets its own cursor (move in edit mode, pointer in read-only); the wrapper must not show grab underneath. */
+.node-graph-editor .ng-vueflow .vue-flow__node-ng-node.draggable,
+.node-graph-editor .ng-vueflow .vue-flow__node-ng-node.draggable.dragging {
+	cursor: move;
+}
+
+.node-graph-editor--readonly .ng-vueflow .vue-flow__node-ng-node {
+	cursor: pointer;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Handles                                                                  */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Vue Flow positions handles absolutely and centres them on the card edge
+ * with a -50% translate (style.css:176-210); NodeCard overrides only the
+ * offset along the edge. theme.css .ng-handle draws the ring, dot and
+ * halo, resets the 5px minimum size, and adds the 24px ::before hit area.
+ * The valid / invalid / target states come from the canvas's own canConnect
+ * verdicts (ng-handle--* classes), not from Vue Flow's `connecting` and
+ * `valid` classes, which it also toggles on the DOM for edge updates where
+ * it never validates.
+ */
+.node-graph-editor .ng-vueflow .vue-flow__handle.ng-handle {
+	z-index: 1;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Edges                                                                    */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * EdgePath draws the .ng-edge group inside Vue Flow's <g class="vue-flow__edge">
+ * (focusable, clickable). style.css already removes that group's outline;
+ * theme.css shows keyboard focus as a halo on the .ng-edge inside it.
+ */
+.node-graph-editor .ng-vueflow .vue-flow__edge {
+	cursor: pointer;
+}
+
+/* The invisible circles at both ends that start an edge update (EdgeAnchor, vue-flow-core.mjs:8783-8800) */
+.node-graph-editor .ng-vueflow .vue-flow__edgeupdater {
+	cursor: move;
+}
+
+.node-graph-editor--readonly .ng-vueflow .vue-flow__edgeupdater {
+	display: none;
+}
+
+/* Label pills are rendered into .vue-flow__edge-labels and positioned with a transform from the edge midpoint. */
+.node-graph-editor .ng-vueflow .ng-vueflow-edge-label {
+	position: absolute;
+	top: 0;
+	left: 0;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Selection boxes                                                          */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * The marquee (Shift + drag) and the rectangle around a marquee selection.
+ * style.css gives them no colours once theme-default is gone. Directus has
+ * no marquee of its own; this is the primary-on-tint pairing of a selected
+ * v-fancy-select card. Pointer events are left as Vue Flow sets them: the
+ * selection rectangle must stay draggable.
+ */
+.node-graph-editor .ng-vueflow .vue-flow__selection,
+.node-graph-editor .ng-vueflow .vue-flow__nodesselection-rect {
+	box-sizing: border-box;
+	background-color: var(--ng-selection-background);
+	border: calc(var(--ng-border-width) / 2) solid var(--ng-selection-border-color);
+	border-radius: calc(var(--ng-border-radius) / 2);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Minimap                                                                  */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * @vue-flow/minimap renders inside a .vue-flow__panel (15px margin,
+ * style.css:217-242). Its own stylesheet is not imported: it only adds a
+ * hard-coded #fff background and the pan cursors, which are reproduced here.
+ * The package also declares "sideEffects": false, so the SDK's Rollup build
+ * would silently drop a plain `import '@vue-flow/minimap/dist/style.css'`
+ * (verified with SDK 17.1.4: no warning, no minimap rules in the bundle).
+ * theme.css .ng-minimap supplies the v-menu popover surface.
+ */
+.node-graph-editor .ng-vueflow .vue-flow__minimap.ng-minimap {
+	right: 0.6875rem;
+	bottom: 0.6875rem;
+	margin: 0;
+	background-color: var(--ng-overlay-background);
+}
+
+.node-graph-editor .ng-vueflow .vue-flow__minimap.ng-minimap svg {
+	display: block;
+}
+
+.node-graph-editor .ng-vueflow .vue-flow__minimap.pannable {
+	cursor: grab;
+}
+
+.node-graph-editor .ng-vueflow .vue-flow__minimap.dragging {
+	cursor: grabbing;
+}
+
+.node-graph-editor .ng-vueflow .vue-flow__minimap-mask {
+	fill: var(--ng-minimap-mask);
+}

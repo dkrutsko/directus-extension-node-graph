@@ -1,0 +1,31 @@
+{
+	// Type-checks the tests together with the framework-free code they import
+	// (src/shared/core, hook, options and ui/documents.ts). `npm run check`
+	// runs it after vue-tsc. There is no DOM library here on purpose: core and
+	// the hook are bundled into the API as well, so any accidental use of a
+	// DOM global fails this check. The tests compare against node:crypto and
+	// read files, so they get Node typings.
+	"extends": "@directus/tsconfig/base",
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2023"],
+		"module": "ES2022",
+		"moduleResolution": "bundler",
+		"resolveJsonModule": true,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+		"declaration": false,
+		"types": ["node"]
+	},
+	"include": [
+		"./src/shared/core/**/*.ts",
+		"./src/shared/hook/**/*.ts",
+		"./src/shared/options.ts",
+		"./tests/**/*.ts",
+		"./vitest.config.ts"
+	],
+	"exclude": [
+		"./node_modules/**",
+		"./dist/**"
+	]
+}

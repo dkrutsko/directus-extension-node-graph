@@ -1,0 +1,33 @@
+name: Build
+
+# Manual only. Runs the same checks the publish workflow runs (type check,
+# unit tests, build, validate), then packs the tarball that *would* be
+# uploaded to npm and attaches it to the run as an artifact so it can be
+# downloaded and inspected. Nothing is published.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run validate
+
+      - name: Pack tarball
+        run: npm pack
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: directus-extension-node-graph
+          path: directus-extension-node-graph-*.tgz
+          if-no-files-found: error

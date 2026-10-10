@@ -1,0 +1,16 @@
+{
+	"extends": "@directus/tsconfig/vue3",
+	"compilerOptions": {
+		"noEmit": true,
+		"declaration": false,
+		"types": []
+	},
+	"include": [
+		"./src/**/*.ts",
+		"./src/**/*.vue"
+	],
+	"exclude": [
+		"./node_modules/**",
+		"./dist/**"
+	]
+}

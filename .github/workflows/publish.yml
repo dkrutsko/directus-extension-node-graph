@@ -1,0 +1,78 @@
+name: Publish
+
+# Manual only. Builds, publishes the given version to npm via trusted
+# publishing, then creates the git tag and GitHub Release. The `publishing`
+# environment gates the job, so it waits for approval if the environment has
+# required reviewers.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish. Must equal "version" in package.json, e.g. 1.0.1'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: publishing
+    permissions:
+      contents: write # to create the release tag and GitHub Release
+      id-token: write # for npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      # Node 22 bundles npm 10, which cannot do trusted publishing (OIDC token
+      # exchange needs npm >= 11.5.1). Without this, `npm publish` is sent
+      # unauthenticated and the registry answers "404 Not Found - PUT".
+      - name: Upgrade npm for trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm -v
+
+      - run: npm ci
+
+      - name: Verify requested version matches package.json
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "${{ inputs.version }}" != "$PKG_VERSION" ]; then
+            echo "Requested ${{ inputs.version }} but package.json says $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Verify tag does not already exist
+        run: |
+          git fetch --tags --quiet
+          if git rev-parse -q --verify "refs/tags/v${{ inputs.version }}" >/dev/null; then
+            echo "Tag v${{ inputs.version }} already exists, bump the version first"
+            exit 1
+          fi
+
+      # `prepublishOnly` runs check, test, build and validate before the upload.
+      - run: npm publish
+
+      # Only reached after npm accepted the upload. Creates the tag on this
+      # commit and the GitHub Release in one go, using the matching section of
+      # CHANGELOG.md as the release notes. The section runs from its heading
+      # to the next `## ` heading or the end of the file; only the heading
+      # lines are dropped, so the last section (the only one, for 0.1.0)
+      # keeps its last line.
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          sed -n "/^## ${VERSION//./\\.}\$/,/^## /{/^## /!p;}" CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "No CHANGELOG.md entry for ${VERSION}, using a placeholder"
+            echo "Release ${VERSION}" > release-notes.md
+          fi
+          gh release create "v${VERSION}" \
+            --target "${GITHUB_SHA}" \
+            --title "v${VERSION}" \
+            --notes-file release-notes.md

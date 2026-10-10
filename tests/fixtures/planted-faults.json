@@ -1,0 +1,36 @@
+{
+	"format": "directus-node-graph",
+	"version": 1,
+	"ruleset": { "key": "approval-workflow", "version": 1 },
+	"nodes": [
+		{ "id": "s1", "type": "start", "position": { "x": 0, "y": 0 }, "data": { "title": "Begin" } },
+		{ "id": "s2", "type": "start", "position": { "x": 0, "y": 180 }, "data": { "title": "Second start" } },
+		{ "id": "t1", "type": "task", "position": { "x": 240, "y": 0 }, "data": { "title": "Review", "assignee": "security", "due_days": 3 } },
+		{ "id": "t2", "type": "task", "position": { "x": 480, "y": 0 }, "data": { "assignee": "it", "due_days": 3 } },
+		{ "id": "t3", "type": "task", "position": { "x": 720, "y": 0 }, "data": { "title": "Loops on itself", "due_days": 3 } },
+		{ "id": "a1", "type": "approval", "position": { "x": 480, "y": 180 }, "data": { "approver": "manager", "sla_hours": 24 } },
+		{ "id": "ghost", "type": "retired_type", "position": { "x": 960, "y": 0 }, "data": { "whatever": true } },
+		{ "id": "lr", "type": "legacy_review", "position": { "x": 960, "y": 180 }, "data": { "title": "Old review" } },
+		{ "id": "lonely", "type": "notify", "position": { "x": 1200, "y": 0 }, "data": { "channel": "email", "message": "TOP SECRET payload text", "__proto__": { "polluted": true } } },
+		{ "id": "dupe", "type": "task", "position": { "x": 1200, "y": 180 }, "data": { "title": "Dup A" } },
+		{ "id": "dupe", "type": "task", "position": { "x": 1200, "y": 360 }, "data": { "title": "Dup B" } },
+		{ "id": "c1", "type": "condition", "position": { "x": 720, "y": 360 }, "data": { "label": "Route", "branches": [{ "label": "Branch A" }] } },
+		{ "id": "n1", "type": "notify", "position": { "x": 960, "y": 360 }, "data": { "channel": "email" } }
+	],
+	"edges": [
+		{ "id": "e_ok", "type": "flow", "source": "s1", "sourceHandle": "next", "target": "t1", "targetHandle": "in" },
+		{ "id": "e_dangling", "type": "flow", "source": "t1", "sourceHandle": "next", "target": "missing", "targetHandle": "in" },
+		{ "id": "e_unknown_type", "type": "teleport", "source": "a1", "sourceHandle": "approved", "target": "t2", "targetHandle": "in" },
+		{ "id": "e_unknown_port", "type": "flow", "source": "a1", "sourceHandle": "nope", "target": "t2", "targetHandle": "in" },
+		{ "id": "e_type_mismatch", "type": "flow", "source": "a1", "sourceHandle": "escalate", "target": "t3", "targetHandle": "in" },
+		{ "id": "e_pair", "type": "flow", "source": "c1", "sourceHandle": "else", "target": "n1", "targetHandle": "in" },
+		{ "id": "e_self", "type": "flow", "source": "t3", "sourceHandle": "next", "target": "t3", "targetHandle": "in" },
+		{ "id": "e_cycle_1", "type": "flow", "source": "t1", "sourceHandle": "next", "target": "a1", "targetHandle": "in" },
+		{ "id": "e_cycle_2", "type": "flow", "source": "a1", "sourceHandle": "rejected", "target": "t1", "targetHandle": "in" },
+		{ "id": "e_multi_1", "type": "flow", "source": "c1", "sourceHandle": "branches.0", "target": "n1", "targetHandle": "in" },
+		{ "id": "e_multi_2", "type": "flow", "source": "c1", "sourceHandle": "branches.0", "target": "n1", "targetHandle": "in" },
+		{ "id": "e_edge_type", "type": "timeout", "source": "a1", "sourceHandle": "approved", "target": "lr", "targetHandle": "in", "data": { "after_hours": 2 } },
+		{ "id": "e_reversed", "type": "flow", "source": "t2", "sourceHandle": "in", "target": "lr", "targetHandle": "in" },
+		{ "id": "e_missing_branch", "type": "flow", "source": "c1", "sourceHandle": "branches.9", "target": "t2", "targetHandle": "in" }
+	]
+}
