@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- First release published by the manual Publish workflow through npm trusted publishing, which validates the trusted publisher configuration. No functional changes.
+
 ## 0.1.0
 
 - Initial release. A bundle with the **Node Graph** interface (`node-graph`) for `json` fields, the **Node Graph Summary** display (`node-graph-summary`) and the `node-graph-guard` hook.

@@ -1,7 +1,7 @@
 {
   "name": "directus-extension-node-graph",
   "description": "Node-graph field for Directus: edit a graph of nodes and connections against a configurable ruleset, with a summary display and server-side validation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "author": {
     "name": "David Krutsko",
