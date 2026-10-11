@@ -15,6 +15,8 @@
 - The hook and the display fetch nothing: there a reference reads as its key. A title whose only tokens are references therefore shows the key (for example "Start for 3") instead of falling back to the type label, and the hook's issue messages name such nodes that way. Fingerprints are unchanged, so the Ratchet policy is unaffected.
 - Core: `formatValue`, `renderTemplate`, `renderTemplateDetailed`, `nodeTitle`, `edgeLabel` and `nodeSummary` take an optional `ReferenceResolver` as their last argument, `validateDocument` an optional `{ references }` and `canConnect`'s options a `references` member. New exports: `asReference`, `isReferenceField`, `REFERENCE_INTERFACES`, `referenceText`, `collectReferences`, `documentReferences` and `templatePaths`. The canvas contract's `CanvasProps` has an optional `references` (`ReferenceLabels`). Without a resolver, nothing changes for values that are not references.
 - The app bundle grows by about 7 KB (2.6 KB gzipped) and the API bundle by about 0.9 KB.
+- **The hook reads stored graphs with the saving user's permissions** when it applies the Ratchet policy, through Directus's item service instead of the raw database handle. A user who may not read an item can no longer learn from the server's answer whether its stored graph already has a given error; for such users Ratchet behaves like Reject. Writes without a user are unchanged.
+- Switching an existing field to the Node Graph interface without sending options is refused when the options the field already holds contain a ruleset that does not compile. Before, only options sent with the save were checked, and the stale ruleset left the field showing the invalid-ruleset notice.
 
 ## 0.1.1
 

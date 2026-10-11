@@ -608,6 +608,27 @@ describe('the ruleset check also covers fields created with their collection, an
 		expect(await filters.get('fields.update')!(payload, { event: 'fields.update', collection: 'directus_fields', keys: [2] }, context(root))).toBe(payload);
 	});
 
+	test('a flat update that switches rows to the interface is checked against each row\'s stored options', async () => {
+		const legacy = [
+			{ id: 3, collection: 'graph_test', field: 'legacy', interface: 'input-code', options: JSON.stringify({ ruleset: broken }) },
+			{ id: 4, collection: 'graph_test', field: 'legacy_ok', interface: 'input-code', options: { ruleset: exampleRuleset } },
+		];
+
+		const { filters, context, root } = guardSetup({}, legacy);
+		const update = filters.get('fields.update')!;
+		const meta = (keys: number[]) => ({ event: 'fields.update', collection: 'directus_fields', keys });
+		const payload = { interface: 'node-graph-test' };
+
+		// The flat row carries no field name; the message takes it from the stored row.
+		const error = await update(payload, meta([3]), context(root)).catch((caught: unknown) => caught);
+		expect(isDirectusError(error, 'INVALID_PAYLOAD')).toBe(true);
+		expect((error as Error).message).toContain('The node graph ruleset of "legacy" has 1 problem');
+
+		expect(await update(payload, meta([4]), context(root))).toBe(payload);
+		expect(await update(payload, meta([2]), context(root))).toBe(payload);
+		expect(isDirectusError(await update(payload, meta([4, 3]), context(root)).catch((caught: unknown) => caught))).toBe(true);
+	});
+
 	test('a failing stored-interface lookup lets the field save through and logs it', async () => {
 		const { filters, context, root, logger } = guardSetup();
 		const payload = { field: 'title', meta: { options: { anything: true } } };

@@ -89,7 +89,7 @@ Inside the editor (⌘ on macOS, Ctrl elsewhere):
 
 The hook checks every graph field written through Directus's item service, whichever way the write arrives: the app, REST, GraphQL, WebSockets, imports, flows with "Emit Events" on, revision reverts and version promotion. It validates the value against the field's current ruleset with the same engine as the editor, applies the field's **Server Enforcement** option, and stores the normalised graph with a freshly computed `meta` (node, connection, error and warning counts and a content hash).
 
-- **Ratchet** (default): a new item must have no errors. An update is refused only when it adds an error the stored graph did not already have, so graphs with old errors stay editable.
+- **Ratchet** (default): a new item must have no errors. An update is refused only when it adds an error the stored graph did not already have, so graphs with old errors stay editable. The stored graph is read with the saving user's permissions; for a user who may not read it, Ratchet behaves like Reject.
 - **Reject**: any error refuses the save.
 - **Log only**: saves are never refused; graphs with errors or warnings are logged with their counts.
 - **Off**: the field is not checked.
