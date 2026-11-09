@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - **Ruleset editor in the field settings.** The Ruleset interface option is no longer one raw-JSON code editor but a form of stock Directus inputs, in the style of the stock Repeater's "Edit Fields": collapsible sections for the ruleset header, data types, node types, edge types, connection rules (with pair rules), graph rules, severity overrides and the starter graph; Repeaters with item drawers for every list; a node type's fields configured with the stock interface and display pickers and their options; selects whose choices come from the ruleset itself, with "(not defined)" entries for dangling references; and admin-facing notes with the template tokens. The interface's `options` is now a custom options component (`src/shared/options-editor`); the plain options (summary template, placeholder, editor width, enforcement, grid, minimap) render as before.
 - **Live validation.** A notice above the sections says whether the ruleset is valid or lists the problems the server refuses the field save with, and one more lists entries that cannot be stored as entered (a severity override without a code, a default value that does not fit its field type).
