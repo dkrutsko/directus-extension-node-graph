@@ -1,22 +1,30 @@
 import { isDirectusError } from '@directus/errors';
-import type { HookConfig } from '@directus/types';
+import type { Accountability, HookConfig } from '@directus/types';
 import { describe, expect, test, vi } from 'vitest';
 import { exampleRuleset, graphHash, starterDocument } from '../src/shared/core';
 import type { GraphDocument } from '../src/shared/core';
 import { createGuard } from '../src/shared/hook/guard';
-import { fakeDatabase, type Row } from './fake-knex';
+import { fakeDatabase, fakeServices, type Row } from './fake-knex';
+import { admin, user } from './guard-setup';
 import { doc, edge, example, node, validWorkflow } from './helpers';
 
 type Handler = (...args: any[]) => any;
 
+/** A ruleset that does not compile. */
+const brokenRuleset = { key: 'x', nodeTypes: [] };
+
 function setup(options: Record<string, unknown> = {}, items: Row[] = []) {
 	const fields: Row[] = [
-		{ collection: 'graph_test', field: 'graph', interface: 'node-graph-test', options: JSON.stringify({ ruleset: exampleRuleset, ...options }) },
-		{ collection: 'graph_test', field: 'title', interface: 'input', options: null },
-		{ collection: 'other', field: 'graph', interface: 'node-graph-someone-else', options: '{}' },
+		{ id: 1, collection: 'graph_test', field: 'graph', interface: 'node-graph-test', options: JSON.stringify({ ruleset: exampleRuleset, ...options }) },
+		{ id: 2, collection: 'graph_test', field: 'title', interface: 'input', options: null },
+		{ id: 3, collection: 'other', field: 'graph', interface: 'node-graph-someone-else', options: '{}' },
+		// Fields on another interface that still hold a ruleset from an earlier life (F-06).
+		{ id: 4, collection: 'graph_test', field: 'legacy', interface: 'input-code', options: JSON.stringify({ ruleset: brokenRuleset }) },
+		{ id: 5, collection: 'graph_test', field: 'legacy_ok', interface: 'input-code', options: { ruleset: exampleRuleset } },
 	];
 
 	const db = fakeDatabase({ directus_fields: fields, graph_test: items });
+	const { services, calls, access } = fakeServices();
 	const filters = new Map<string, Handler>();
 	const actions = new Map<string, Handler[]>();
 	const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -31,19 +39,23 @@ function setup(options: Record<string, unknown> = {}, items: Row[] = []) {
 			schedule: () => undefined,
 			embed: () => undefined,
 		} as never,
-		{ database: db.database, logger, services: {}, env: {}, getSchema: async () => ({}), emitter: null } as never,
+		{ database: db.database, logger, services, env: {}, getSchema: async () => ({}), emitter: null } as never,
 	);
 
-	const context = {
+	const contextAs = (accountability: Accountability | null) => ({
 		database: db.database,
 		schema: { collections: { graph_test: { collection: 'graph_test', primary: 'id', fields: {} } } },
-		accountability: { user: 'u1', role: null, admin: true, app: true },
-	};
+		accountability,
+	});
+
+	const context = contextAs(admin);
 
 	const create = (payload: unknown) => filters.get('items.create')!(payload, { event: 'items.create', collection: 'graph_test' }, context);
 	const update = (payload: unknown, keys: unknown[] = [1]) => filters.get('items.update')!(payload, { event: 'items.update', collection: 'graph_test', keys }, context);
+	const updateAs = (accountability: Accountability | null, payload: unknown, keys: unknown[] = [1]) =>
+		filters.get('items.update')!(payload, { event: 'items.update', collection: 'graph_test', keys }, contextAs(accountability));
 
-	return { filters, actions, logger, db, context, create, update, fields };
+	return { filters, actions, logger, db, context, contextAs, create, update, updateAs, fields, calls, access };
 }
 
 /** Runs a promise that should reject and returns the rejection. */
@@ -161,6 +173,96 @@ describe('createGuard: items', () => {
 		expect((await update({ graph: brokenTask() }, ['1'])).graph.meta.errorCount).toBe(1);
 	});
 
+	test('ratchet reads the stored graphs through ItemsService on the event handle, as the caller, without events', async () => {
+		const { update, updateAs, calls, db, access } = setup({}, [{ id: 1, graph: JSON.stringify(brokenTask()) }]);
+		access.rule = (_accountability, row) => row;
+
+		await update({ graph: brokenTask() });
+		await updateAs(user, { graph: brokenTask() }, ['1']);
+		await updateAs(null, { graph: brokenTask() });
+
+		expect(calls).toHaveLength(3);
+		expect(calls.map((call) => call.accountability)).toEqual([admin, user, null]);
+
+		for (const call of calls) {
+			expect(call).toMatchObject({ collection: 'graph_test', fields: ['id', 'graph'], emitEvents: false, limit: call.keys.length });
+			expect(call.knex).toBe(db.database);
+		}
+
+		// A create never reads stored values.
+		const { create, calls: createCalls } = setup();
+		await create({ graph: validWorkflow() });
+		expect(createCalls).toHaveLength(0);
+	});
+
+	test('ratchet treats an item the caller may not read as a create: its old error now refuses, and nothing is logged as an error', async () => {
+		const stored = brokenTask();
+		const { updateAs, logger, access } = setup({}, [{ id: 1, graph: JSON.stringify(stored) }]);
+
+		// No read permission at all: ItemsService throws ForbiddenError.
+		const forbidden = await rejectionOf(updateAs(user, { graph: stored }));
+		expect(isDirectusError(forbidden, 'FAILED_VALIDATION')).toBe(true);
+		expect(forbidden.extensions.validation_message).toMatch(/^The graph has 1 error: /);
+		expect(logger.error).not.toHaveBeenCalled();
+		expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('may not read the stored graphs'));
+
+		// Read permission with an item filter that hides this row: the row is absent.
+		access.rule = (_accountability, row) => (row['id'] === 2 ? row : null);
+		expect(isDirectusError(await rejectionOf(updateAs(user, { graph: stored })))).toBe(true);
+		expect(logger.error).not.toHaveBeenCalled();
+
+		// The same user may read the row: the old error is accepted again.
+		access.rule = (_accountability, row) => row;
+		expect((await updateAs(user, { graph: stored })).graph.meta.errorCount).toBe(1);
+
+		// And a clean graph is accepted whatever the user may read.
+		access.rule = null;
+		expect((await updateAs(user, { graph: validWorkflow() })).graph.meta.errorCount).toBe(0);
+	});
+
+	test('ratchet treats a graph field the caller may not read as empty', async () => {
+		const stored = brokenTask();
+		const { updateAs, access } = setup({}, [{ id: 1, graph: JSON.stringify(stored) }]);
+
+		// Readable row, but the graph field is not among the fields the user may read.
+		access.rule = (_accountability, row) => ({ id: row['id'] });
+		expect(isDirectusError(await rejectionOf(updateAs(user, { graph: stored })))).toBe(true);
+
+		// Across several items, one unreadable item is enough: every item must already have the error.
+		const { updateAs: updateTwo, access: accessTwo } = setup({}, [
+			{ id: 1, graph: JSON.stringify(stored) },
+			{ id: 2, graph: JSON.stringify(stored) },
+		]);
+
+		accessTwo.rule = (_accountability, row) => (row['id'] === 1 ? row : null);
+		expect(isDirectusError(await rejectionOf(updateTwo(user, { graph: stored }, [1, 2])))).toBe(true);
+		accessTwo.rule = (_accountability, row) => row;
+		expect((await updateTwo(user, { graph: stored }, [1, 2])).graph.meta.errorCount).toBe(1);
+	});
+
+	test('ratchet still sees every stored graph for administrators and for writes without a user', async () => {
+		const stored = brokenTask();
+		const { update, updateAs, access, calls } = setup({}, [{ id: 1, graph: JSON.stringify(stored) }]);
+
+		// A rule that would hide everything from a user does not apply to either.
+		access.rule = () => null;
+		expect((await update({ graph: stored })).graph.meta.errorCount).toBe(1);
+		expect((await updateAs(null, { graph: stored })).graph.meta.errorCount).toBe(1);
+		expect(calls.map((call) => call.accountability)).toEqual([admin, null]);
+	});
+
+	test('a stored read that fails for another reason is logged as an error and treated as empty', async () => {
+		const stored = brokenTask();
+		const { update, logger, db } = setup({}, [{ id: 1, graph: JSON.stringify(stored) }]);
+
+		// The field map is loaded first; fail the database only afterwards.
+		expect((await update({ graph: stored })).graph.meta.errorCount).toBe(1);
+		db.fail();
+
+		expect(isDirectusError(await rejectionOf(update({ graph: stored })))).toBe(true);
+		expect(logger.error).toHaveBeenCalledWith(expect.any(Error), expect.stringContaining('could not read stored graphs of graph_test'));
+	});
+
 	test('reject blocks pre-existing errors too', async () => {
 		const { update } = setup({ enforcement: 'reject' }, [{ id: 1, graph: JSON.stringify(brokenTask()) }]);
 		expect(isDirectusError(await rejectionOf(update({ graph: brokenTask() })))).toBe(true);
@@ -269,5 +371,52 @@ describe('createGuard: fields', () => {
 
 		const otherField = { field: 'title', meta: { options: { ruleset: { key: 'x' } } } };
 		expect(await update(otherField, { collection: 'graph_test', keys: ['title'] }, context)).toBe(otherField);
+	});
+
+	test('switching a field to the interface without sending options is checked against the options it already holds', async () => {
+		const { filters, context, db } = setup();
+		const update = filters.get('fields.update')!;
+
+		const toOurs = { field: 'legacy', meta: { interface: 'node-graph-test' } };
+		const error = await rejectionOf(update(toOurs, { collection: 'graph_test', keys: ['legacy'] }, context));
+
+		expect(isDirectusError(error, 'INVALID_PAYLOAD')).toBe(true);
+		expect(error.message).toBe('Invalid payload. The node graph ruleset of "legacy" has 1 problem: nodeTypes: must declare at least one node type.');
+		expect(db.queries.filter((table) => table === 'directus_fields')).toHaveLength(1);
+
+		// Sending valid options with the switch replaces the stored ones, so the stored ruleset is not consulted.
+		const withOptions = { field: 'legacy', meta: { interface: 'node-graph-test', options: { ruleset: exampleRuleset } } };
+		expect(await update(withOptions, { collection: 'graph_test', keys: ['legacy'] }, context)).toBe(withOptions);
+		expect(db.queries.filter((table) => table === 'directus_fields')).toHaveLength(1);
+	});
+
+	test('switching is accepted when the stored ruleset compiles or is missing, on a create, and without accountability', async () => {
+		const { filters, context, contextAs } = setup();
+		const update = filters.get('fields.update')!;
+		const create = filters.get('fields.create')!;
+
+		const okStored = { field: 'legacy_ok', meta: { interface: 'node-graph-test' } };
+		expect(await update(okStored, { collection: 'graph_test', keys: ['legacy_ok'] }, context)).toBe(okStored);
+
+		const noOptions = { field: 'title', meta: { interface: 'node-graph-test' } };
+		expect(await update(noOptions, { collection: 'graph_test', keys: ['title'] }, context)).toBe(noOptions);
+
+		const unknownField = { field: 'brand_new', meta: { interface: 'node-graph-test' } };
+		expect(await update(unknownField, { collection: 'graph_test', keys: ['brand_new'] }, context)).toBe(unknownField);
+
+		const created = { field: 'fresh', type: 'json', meta: { interface: 'node-graph-test' } };
+		expect(await create(created, { collection: 'graph_test' }, context)).toBe(created);
+
+		const schemaApply = { field: 'legacy', meta: { interface: 'node-graph-test' } };
+		expect(await update(schemaApply, { collection: 'graph_test', keys: ['legacy'] }, contextAs(null))).toBe(schemaApply);
+	});
+
+	test('a failing stored-options lookup lets the switch through and logs it', async () => {
+		const { filters, context, db, logger } = setup();
+		const payload = { field: 'legacy', meta: { interface: 'node-graph-test' } };
+
+		db.fail();
+		expect(await filters.get('fields.update')!(payload, { collection: 'graph_test', keys: ['legacy'] }, context)).toBe(payload);
+		expect(logger.error).toHaveBeenCalledWith(expect.any(Error), expect.stringContaining('could not read the stored field graph_test.legacy'));
 	});
 });

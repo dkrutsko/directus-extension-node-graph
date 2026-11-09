@@ -23,7 +23,22 @@
  *   below therefore goes through the event's `context.database`, never the
  *   `database` captured at registration.
  * - Filters run before permission checks (items.ts:726-760), so error
- *   messages name only ids, node titles, port labels and issue codes.
+ *   messages name only ids, node titles, port labels and issue codes. For the
+ *   same reason the stored graphs the `ratchet` policy compares against are
+ *   read through `services.ItemsService` (from the registration context,
+ *   api/src/extensions/manager.ts:963-970) built with the event's handle,
+ *   schema and accountability (items.ts:52-61), never with the raw handle:
+ *   `readMany` runs the read permissions of the caller (`processAst` in
+ *   `readByQuery`, items.ts:519-531), which throws `ForbiddenError` when the
+ *   caller may not read the collection or one of the requested fields
+ *   (api/src/permissions/modules/process-ast/process-ast.ts:46-59 and
+ *   utils/validate-path/validate-path-permissions.ts:11-43) and leaves out
+ *   the rows the caller's policies hide. Both count as "nothing stored", so
+ *   the answer to a save never depends on data the caller may not read. With
+ *   the raw handle, a caller without any permission could tell from
+ *   400-versus-403 whether a stored graph already had a given error. The read
+ *   passes `emitEvents: false` so no `items.read` filter or flow fires for it
+ *   (items.ts:499-514).
  * - `SchemaOverview` has no `interface` or `options`
  *   (packages/types/src/schema.ts:5-19), hence the field map read from
  *   directus_fields, cached for 60 s and cleared on `fields.*` actions (which
@@ -45,11 +60,14 @@
  * - Field saves emit `fields.create` / `fields.update` filters with the field
  *   payload (api/src/services/fields.ts:403-417 and 518-532). `schema apply`
  *   runs FieldsService without accountability, and a snapshot must always
- *   apply, so the ruleset check is skipped there.
+ *   apply, so the ruleset check is skipped there. An update may carry only the
+ *   keys that changed, so a save that sets our interface without `options` is
+ *   checked against the options the field already holds, and one that sets
+ *   `options` without an interface against the interface it already has.
  */
 
-import { InvalidPayloadError, createError } from '@directus/errors';
-import type { EventContext, HookConfig, PrimaryKey } from '@directus/types';
+import { ErrorCode, InvalidPayloadError, createError, isDirectusError } from '@directus/errors';
+import type { EventContext, ExtensionsServices, HookConfig, PrimaryKey } from '@directus/types';
 import type { Knex } from 'knex';
 import { compileRuleset, computeMeta, normalizeDocument, validateValue } from '../core';
 import type { CompiledRuleset, GraphDocument, Issue, IssueCode } from '../core';
@@ -74,6 +92,16 @@ export interface GraphField {
 }
 
 export type FieldMap = Map<string, GraphField[]>;
+
+/** What the guard needs from the registration context's `services`. */
+export type GuardServices = Pick<ExtensionsServices, 'ItemsService'>;
+
+/** A directus_fields row as the field guard reads it. */
+interface StoredFieldRow {
+	field: string;
+	interface: unknown;
+	options: unknown;
+}
 
 /** `extensions` of a rejection. Shaped like FailedValidationError's, plus what the app and API clients need. */
 export interface GraphValidationExtensions {
@@ -109,7 +137,7 @@ interface Logger {
  * - actions `fields.create|update|delete`: clear the field map.
  */
 export function createGuard(interfaceId: string): HookConfig {
-	return ({ filter, action }, { logger }) => {
+	return ({ filter, action }, { logger, services }) => {
 		const fieldMap = createFieldMapCache(interfaceId, logger);
 
 		for (const event of ['fields.create', 'fields.update', 'fields.delete']) {
@@ -155,10 +183,16 @@ export function createGuard(interfaceId: string): HookConfig {
 
 			if (needsStored) {
 				try {
-					stored = await readStored(context, collection, present, keys);
+					stored = await readStored(services, context, collection, present, keys);
 				} catch (error) {
 					// Without the stored values there is nothing to ratchet against: behave like `reject`.
-					logger.error(error, `node-graph (${interfaceId}): could not read stored graphs of ${collection}; treating them as empty`);
+					// A ForbiddenError is the read permissions at work (see the header), not a fault.
+					if (isDirectusError(error, ErrorCode.Forbidden)) {
+						logger.debug(`node-graph (${interfaceId}): the caller may not read the stored graphs of ${collection}; treating them as empty`);
+					} else {
+						logger.error(error, `node-graph (${interfaceId}): could not read stored graphs of ${collection}; treating them as empty`);
+					}
+
 					stored = new Map();
 				}
 			}
@@ -224,41 +258,61 @@ export function createGuard(interfaceId: string): HookConfig {
 					? meta['collection']
 					: '';
 
-			let usesInterface = fieldMeta['interface'] === interfaceId;
+			const setsInterface = fieldMeta['interface'] === interfaceId;
+			const hasOptions = fieldMeta['options'] !== undefined;
 
-			// An update may carry only the changed options; look up the stored interface then.
-			if (!usesInterface && fieldMeta['interface'] === undefined && isUpdate && fieldMeta['options'] !== undefined) {
+			/** The options to compile, with the field each belongs to. */
+			let checks: Array<{ field: string; options: unknown }>;
+
+			if (setsInterface && hasOptions) {
+				checks = [{ field, options: fieldMeta['options'] }];
+			} else if (isUpdate && (setsInterface || (fieldMeta['interface'] === undefined && hasOptions))) {
+				// An update may carry only what changed. Options without an interface: is
+				// the stored field ours? Our interface without options: which ruleset does
+				// the field already hold? Without the second lookup, switching a field that
+				// still carries an invalid ruleset from an earlier interface was accepted,
+				// and the field then showed the invalid-ruleset notice to every user.
+				let rows: StoredFieldRow[];
+
 				try {
-					const query = context.database.select('interface').from('directus_fields');
-					const rows: Array<{ interface: unknown }> = await (flat ? query.whereIn('id', keys as string[]) : query.where({ collection, field }));
-					usesInterface = rows.some((row) => row?.interface === interfaceId);
+					rows = await readStoredFields(context.database, flat, keys, collection, field);
 				} catch (error) {
 					// The field may not be ours at all; never fail a field save because of this lookup.
-					logger.error(error, `node-graph (${interfaceId}): could not read the stored interface of ${collection}.${field}; not checking the ruleset`);
+					logger.error(error, `node-graph (${interfaceId}): could not read the stored field ${collection}.${field}; not checking the ruleset`);
 					return payload;
 				}
+
+				if (setsInterface) {
+					checks = rows.map((row) => ({ field: row.field, options: row.options }));
+				} else {
+					checks = rows.some((row) => row.interface === interfaceId) ? [{ field: field || rows[0]?.field || '', options: fieldMeta['options'] }] : [];
+				}
+			} else {
+				// Another interface, or a create that sets ours without options: not configured yet is allowed
+				// (the editor shows a notice until a ruleset is set).
+				return payload;
 			}
 
-			if (!usesInterface) return payload;
+			for (const check of checks) {
+				// directus_fields.options is json; a client may send it as text.
+				const options = parseOptions(check.options);
+				if (!isPlainObject(options)) continue;
 
-			// directus_fields.options is json; a client may send it as text.
-			const options = parseOptions(fieldMeta['options']);
-			if (!isPlainObject(options)) return payload;
+				const ruleset = options['ruleset'];
+				if (ruleset === undefined || ruleset === null || ruleset === '') continue;
 
-			const ruleset = options['ruleset'];
+				const { problems } = compileRuleset(ruleset);
+				if (problems.length === 0) continue;
 
-			// Not configured yet is allowed: the editor shows a notice until a ruleset is set.
-			if (ruleset === undefined || ruleset === null || ruleset === '') return payload;
+				const listed = problems.slice(0, 10).join(' ');
+				const more = problems.length > 10 ? ` (${problems.length - 10} more)` : '';
 
-			const { problems } = compileRuleset(ruleset);
-			if (problems.length === 0) return payload;
+				throw new InvalidPayloadError({
+					reason: `The node graph ruleset of "${check.field}" has ${problems.length} problem${problems.length === 1 ? '' : 's'}: ${listed}${more}`.replace(/\.$/, ''),
+				});
+			}
 
-			const listed = problems.slice(0, 10).join(' ');
-			const more = problems.length > 10 ? ` (${problems.length - 10} more)` : '';
-
-			throw new InvalidPayloadError({
-				reason: `The node graph ruleset of "${field}" has ${problems.length} problem${problems.length === 1 ? '' : 's'}: ${listed}${more}`.replace(/\.$/, ''),
-			});
+			return payload;
 		}
 	};
 }
@@ -410,9 +464,14 @@ function describeIssue(issue: Issue): string {
 
 /**
  * Stored rows of the updated items (primary key → row with the graph
- * fields), read through the event's database handle.
+ * fields), read as the caller would read them: through ItemsService on the
+ * event's database handle, schema and accountability (see the header). Rows
+ * the caller may not read are absent; a collection or field they may not
+ * read throws ForbiddenError. Without an accountability the service reads
+ * everything (api/src/permissions/modules/process-ast/process-ast.ts:25-32).
  */
 async function readStored(
+	services: GuardServices,
 	context: EventContext,
 	collection: string,
 	fields: GraphField[],
@@ -422,18 +481,35 @@ async function readStored(
 	const rows = new Map<string, Record<string, unknown>>();
 
 	// Without a schema there is no safe way to find the rows; ratchet then behaves like reject.
-	if (!primaryKey) return rows;
+	if (!context.schema || !primaryKey) return rows;
+
+	const service = new services.ItemsService<Record<string, unknown>>(collection, {
+		knex: context.database,
+		schema: context.schema,
+		accountability: context.accountability,
+	});
 
 	const columns = [primaryKey, ...fields.map((graphField) => graphField.field)];
 
 	for (let start = 0; start < keys.length; start += KEY_CHUNK_SIZE) {
 		const chunk = keys.slice(start, start + KEY_CHUNK_SIZE);
-		const result: Array<Record<string, unknown>> = await context.database.select(columns).from(collection).whereIn(primaryKey, chunk);
+		// At most one row per key; the explicit limit keeps QUERY_LIMIT_DEFAULT out of it (api/src/database/run-ast/lib/get-db-query.ts:45).
+		const result = await service.readMany(chunk, { fields: columns, limit: chunk.length }, { emitEvents: false });
 
 		for (const row of result) rows.set(String(row[primaryKey]), row);
 	}
 
 	return rows;
+}
+
+/**
+ * The directus_fields rows a field save addresses: by row id for a flat row
+ * (`whereIn`), else by collection and field. Runs on the event's handle (see
+ * the header).
+ */
+async function readStoredFields(database: Knex, flat: boolean, keys: unknown[], collection: string, field: string): Promise<StoredFieldRow[]> {
+	const query = database.select('field', 'interface', 'options').from('directus_fields');
+	return flat ? query.whereIn('id', keys as string[]) : query.where({ collection, field });
 }
 
 /**

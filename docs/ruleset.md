@@ -669,7 +669,7 @@ The bundle's hook validates graph fields whenever items are created or updated t
 
 | Policy | Behaviour |
 |---|---|
-| `ratchet` (default) | On create, any error refuses the save. On update, an error refuses the save only if one of the updated items did not already have it in its stored value (errors are compared by fingerprint), so graphs with old errors stay editable as long as no new ones are added. An item whose stored value is empty, or that cannot be found, is treated like a create. Stored values are read in chunks of 500 items, and identical values are validated once. |
+| `ratchet` (default) | On create, any error refuses the save. On update, an error refuses the save only if one of the updated items did not already have it in its stored value (errors are compared by fingerprint), so graphs with old errors stay editable as long as no new ones are added. An item whose stored value is empty, or that cannot be found, is treated like a create. Stored values are read with the saving user's permissions (see below), in chunks of 500 items, and identical values are validated once. |
 | `reject` | Any error refuses the save. |
 | `log` | Never refuses. Saves with errors or warnings are logged at info level with their counts. |
 | `off` | The field is skipped and its value stored as sent. |
@@ -681,13 +681,15 @@ For every policy except `off`:
 - A value that could only be read by dropping data (an `invalid_document` problem) is left exactly as sent when the policy accepts it, rather than replaced by the reduced copy.
 - A field whose ruleset is missing or does not compile gets only the structural checks (`invalid_document`), and a warning is logged when the hook first reads the field.
 
+Under `ratchet`, the stored values are read through Directus's item service with the saving user's permissions, as a read request of theirs would be. An item the user may not read, or a graph field they may not read, counts as empty, so the answer to a save never depends on data the user cannot see; for such a user `ratchet` behaves like `reject`. Writes without a user (flows without a user, internal calls) read everything.
+
 A refused save fails with HTTP 400 and the error code `FAILED_VALIDATION`. Its `extensions` are `collection`, `field`, `path` (`[]`), `type` (`"regex"`), `validation_message` and `issues`. `validation_message` lists up to five issues with their codes and ids, for example `The graph has 1 error: "Approval": "Approver" is required. [field_required, node n_k3x9p2qa7hdm]`, or under `ratchet` "This change adds 1 error to the graph: ...". `issues` lists every refusing issue as `{ code, nodeId?, edgeId?, port?, field? }`. The app marks the field as invalid, shows "Value doesn't have the correct format" under it (or the field's own Validation Message, if one is set), and shows `validation_message` in the form's error notice. When two graph fields of one payload fail, both errors are returned.
 
 The hook reads which fields use the Node Graph interface from `directus_fields` and caches the result for 60 seconds. Creating, updating or deleting a field clears the cache on the instance that handled the change; other instances pick it up within the minute. If the lookup fails, the write goes through unchecked and the error is logged, so the hook never blocks collections it does not manage.
 
 ### Ruleset check on field save
 
-When a user creates or updates a field that uses the Node Graph interface (in Data Model, through `/fields`, or with `POST /collections` and its `fields`), the hook compiles the field's ruleset. A ruleset that does not compile refuses the save with `INVALID_PAYLOAD` and up to ten of its problems: `The node graph ruleset of "workflow" has 2 problems: ...`. An empty ruleset is allowed; the field then shows a notice until one is set. An update that only changes options is checked against the interface stored for the field.
+When a user creates or updates a field that uses the Node Graph interface (in Data Model, through `/fields`, or with `POST /collections` and its `fields`), the hook compiles the field's ruleset. A ruleset that does not compile refuses the save with `INVALID_PAYLOAD` and up to ten of its problems: `The node graph ruleset of "workflow" has 2 problems: ...`. An empty ruleset is allowed; the field then shows a notice until one is set. An update that only changes options is checked against the interface stored for the field, and an update that switches a field to the Node Graph interface without sending options is checked against the options the field already holds, so a ruleset left over from another interface that does not compile has to be fixed in the same save.
 
 ## What the hook does not see
 
