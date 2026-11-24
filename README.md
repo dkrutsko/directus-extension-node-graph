@@ -1,7 +1,7 @@
 # directus-extension-node-graph
 
-![npm](https://img.shields.io/npm/v/directus-extension-node-graph)
-![build](https://img.shields.io/github/actions/workflow/status/dkrutsko/directus-extension-node-graph/build.yml)
+[![npm](https://img.shields.io/npm/v/directus-extension-node-graph)](https://www.npmjs.com/package/directus-extension-node-graph)
+[![license](https://img.shields.io/npm/l/directus-extension-node-graph)](https://opensource.org/licenses/MIT)
 
 A node-graph field for [Directus](https://directus.io). It stores a graph of nodes and connections in a JSON field and edits it in a widened side drawer that looks like part of the Data Studio: Flows-style cards and arrows, the dotted Flows grid, and Directus components and theme tokens throughout. What a graph may contain is set per field with a ruleset, edited in the field's interface options with stock Directus inputs (or as JSON), which the editor checks while you draw and the server checks when the item is saved.
 
